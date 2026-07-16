@@ -72,7 +72,9 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      only convinces in reference-matched light has NOT passed.
    - KINEMATIC EVIDENCE — any spec `animation` channel requires captures at ≥2 states (e.g.
      `?state=0` / `?state=90`) at its owning pass AND P6; reviewer scores pose coherence across the set.
-3. **Blind vision review** → JSON conforming to `assets/review.schema.json`.
+3. **Blind vision review** → JSON conforming to `assets/review.schema.json`. The brief PASTES that
+   schema's exact field names verbatim; it never points the judge at the schema file, which is how
+   judges invent keys (`ROLES.md` §render-reviewer).
 
 **Evidence-gated advance**: no pass advances without its screenshot(s) + review JSON on disk —
 a verbal "looks good" is not a gate result. Write evidence to disk BEFORE starting corrections.
@@ -247,10 +249,9 @@ Every review ends in exactly ONE `action`:
   broken contract** (cinemex X1: a viewport-aspect contradiction between test and harness forced
   the facade 4.5 m off-axis to satisfy two truths about one image).
   The re-gate is a **post-refine-spec SCOPED P3**: the validator sees ONLY the fields the refinement
-  touched, not the whole spec. Re-validating an unchanged spec is cost with no signal, and the full
-  sweep is what makes a mid-run refinement feel too expensive to escalate — which is how a run ends
-  up patching code around a bad spec instead. (cinemex, P6 L2: the RTU amendment's
-  FAIL → prescribed-fix → PASS cycle took minutes for exactly this reason.)
+  touched, not the whole spec. Re-validating an unchanged spec is cost with no signal. (cinemex,
+  P6 L2: the RTU amendment's FAIL → prescribed-fix → PASS cycle took minutes because the validator
+  saw only the touched fields.)
 - `refine-code` — spec is right, build is wrong: apply `corrections` only.
 - `request-input` — missing reference/dimension: ask the user; do not guess.
 - `stop` — requested fidelity unreachable from current inputs — a VALID result; say so with evidence.

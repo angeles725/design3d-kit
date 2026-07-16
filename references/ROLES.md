@@ -73,19 +73,25 @@ then hand the modeler a closed diagnosis.
 
 **render-reviewer (blind)** — "You see ONLY: design-spec.yaml, the capture(s), the GATES.md
 rubric, and — at P6 — the P1 reference images (same viewpoint). Score global gestalt and every
-critical feature 0.0–1.0 against what the spec promises. Return JSON per
-`assets/review.schema.json` — defects in pixel terms, corrections imperative and actionable.
-You never see code; judge pixels vs promises."
+critical feature 0.0–1.0 against what the spec promises. Defects in pixel terms, corrections
+imperative and actionable. You never see code; judge pixels vs promises.
 
-**The reviewer brief EMBEDS the schema's exact field names, VERBATIM — never a pointer to the
-schema file.** A judge that is told "conform to `review.schema.json`" invents keys; a judge that is
-handed the keys returns them. Paste into every brief: `pass` · `attempt` · `global_score` ·
-`layer_scores` {`silhouetteProportion`, `componentStructure`, `formDetail`, `materialSurface`,
-`lightingCamera`} · `features[]` {`id`, `score`, `threshold`, `pass`, `note`} ·
-`important_features[]` (same shape) · `important_average` · `defects[]` · `corrections[]` ·
-`mechanical` {`console_clean`, `budget_pass`, `tests`, `note`} · `verdict` (`PASS`|`FAIL`) ·
-`action` (`continue`|`refine-spec`|`refine-code`|`request-input`|`stop`). The judge returns THAT
-schema and nothing invented — no extra fields, no renamed layers.
+Return JSON with EXACTLY these keys — verbatim, nothing invented, no extra fields, no renamed
+layers: `pass` · `attempt` · `global_score` · `layer_scores` {`silhouetteProportion`,
+`componentStructure`, `formDetail`, `materialSurface`, `lightingCamera`} · `features[]` {`id`,
+`score`, `threshold`, `pass`, `note`} · `important_features[]` (same shape) · `important_average` ·
+`assumed_thresholds` {`global_min`, `feature_default`} (retrofit gate only — a spec-less design;
+never write `global_min` as a root key) · `defects[]` · `corrections[]` · `mechanical`
+{`console_clean`, `draws`, `tris`, `polys`, `objects`, `fps`, `budget_pass`, `tests` {`command`,
+`pass`, `fail`}, `note`} · `verdict` (`PASS`|`FAIL`) · `action`
+(`continue`|`refine-spec`|`refine-code`|`request-input`|`stop`)."
+
+**That key list IS the brief — it is pasted VERBATIM, never replaced by a pointer to the schema
+file.** A judge that is told "conform to `review.schema.json`" invents keys; a judge that is handed
+the keys returns them. The block above must survive being copied ALONE, so the keys live inside it
+and nowhere else in this section — a contract restated in two places drifts in one of them.
+(`assets/review.schema.json` stays the machine-checkable authority for validation; keep the two in
+sync when the schema changes.)
 
 Why, and the A/B that proves it: two consecutive cinemex judges returned off-schema JSON (invented
 `layer_scores` keys; extra `evidence`/`expectation` fields) and `p6-final-attempt1` had to be
