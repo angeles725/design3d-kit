@@ -1,0 +1,97 @@
+# LIBRARY INDEX — registry of reusable blocks
+
+One row per block. `kind`: `module` (file lives in this library) · `recipe` (pattern .md, code
+stays exemplified in its source design) · `pointer` (whole-equipment catalog design in the repo).
+`status`: `ready` · `pending-extraction` (registered, file lands when its design's active round
+closes) · `superseded-by: <name>`.
+
+## controllers/
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| shader-warmup | module | Boot-time warm-up that compiles clipping/selection/mode shader variants BEFORE `data-app-ready`, byte-identical state restore — kills the first-use freeze on section/selection toggles. | cinemex-hvac-lorawan `src/controllers/warmup.js` · p6-final L2 0.78 (2026-07-14) | ready (`controllers/shader-warmup.mjs`) |
+| smooth-dolly | module | Exponential wheel-zoom smoothing (OrbitControls r160 never damps dolly): wheel accumulates a target distance, update() approaches it; cancels during preset lerps and first-person. | cinemex `src/controllers/camera.js` · p6-final L2 0.78 | ready (`controllers/smooth-dolly.mjs`) |
+| query-state-contract | recipe | Atomic URL query-state parser/serializer as a QA contract: unknown value on a known key resets ALL state (loud, testable); serialize(parse(s)) is a fixed point; `tick` pins the animation clock so captures never race. | cinemex `src/controllers/query-state.js` · interaction-ui 0.81 | ready (recipe: `recipes/query-state-contract.md`) |
+| layer-visibility-controller | recipe | Central layer controller (roof/walls/media/labels) where every visibility rule lives in ONE apply() — including stacked elements that must follow a parent layer (interior ceilings follow the roof toggle). | cinemex `src/controllers/layers.js` · p6-final L2 0.78 | ready (recipe: `recipes/layer-visibility-controller.md`) |
+
+## harness/
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| export-glb | pointer | Headless GLTFExporter driver over the page's QA hook; strips non-drawable textures (DataTexture/PMREM); imports exporter through the page importmap (single three.js instance). | `research/tools/export-glb.mjs` (repo tool) · shipped cinemex P7 kit | ready |
+| qa-render-info-hook | recipe | `window.__qaRenderInfo = () => runtime.renderer.info.render{...}` — ground-truth draws/tris for probes; the wrapper-based counter it replaced under-read InstancedMesh 60×. | cinemex `main.js` · optimization 0.82 | ready (recipe: `recipes/qa-render-info-hook.md`) |
+| app-ready-flag | recipe | Readiness as `data-app-ready` on <html> AFTER warm-up, never a status-text write (a hard-coded status literal once clobbered derived HUD copy on every cold load). | cinemex `main.js` · interaction-ui 0.81 | ready (recipe: `recipes/app-ready-flag.md`) |
+
+## fx/
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| deterministic-tick-pools | recipe | Fixed InstancedMesh pools (packets/waves/halos, count=0 + visible=false when idle) animated by a derived `tick` clock: `resolvePacketT`, arc-length polyline sampling, halo pulse — zero per-frame allocation, draws identical at any tick. | cinemex `src/scene/interaction.js` · interaction-ui 0.81 + optimization 0.82 | ready (recipe: `recipes/deterministic-tick-pools.md`) |
+| status-overlay-instancing | recipe | Fault/selection recolor WITHOUT duplicate geometry: affected instances zero-scaled in their own mesh and re-emitted into a status overlay InstancedMesh at the same transform (`statusOwner` index); restore is exact. | cinemex `src/scene/architecture.js` · interaction-ui 0.81 | ready (recipe: `recipes/status-overlay-instancing.md`) |
+
+## markers-ui/
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| hud-single-derivation | recipe | One pure `deriveHudModel(state)` owns ALL HUD copy; every DOM surface renders from it (status line, dot, alarm list) so two surfaces can never contradict. | cinemex `src/hud.mjs` · interaction-ui 0.81 | ready (recipe: `recipes/hud-single-derivation.md`) |
+| sims-floating-banner | module | "SIMS-style" floating billboard banner: canvas badge with inverted pointer arrow + additive pulsing halo sprite + vertical bob/sway loop; Sprite = always camera-facing. Client-validated look. Params: position, texts/logo, colors. | cuarto-frio-safran `cuarto-3d.html:32109-32189` (client-shipped) | ready |
+| temperature-chips | module | Billboard temperature-chip FLEET (sims-floating-banner lineage): one badge Sprite per unit with zone + live reading, alarm recolor + pulsing halo, exterior-only visibility (`isCameraOutside` envelope), tick-driven bob/sway, canvas redraw only on reading change. | cinemex `src/scene/temperature-chips.js` · p6-final L4 0.80 (2026-07-15) | ready (`markers-ui/temperature-chips.mjs`) |
+| backlit-sign-glyph-reveal | recipe | Wall backlit sign whose glyphs are independent baked meshes revealed with staggered easeOutBack scale+fade — no canvas redraw per frame. | cuarto-3d.html:31929-32107 | pending-extraction |
+| voxel-bitmap-font | module | 5×5 bitmap font from '10001' strings → emissive voxel lettering for signs. | hotel-torre-voxel.optimized.html:513-535 | pending-extraction |
+| coord-capture-picker | module | QA coordinate picker: click raycast with 6px anti-drag threshold, sphere markers (FIFO 6), surface classification — already ported across designs once by hand. | cuarto-3d.html:32217-32243 | ready (`harness/coord-capture-picker.mjs`) |
+
+## parts/
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| trane-rtu-family | pointer | Packaged rooftop unit silhouette family (voxel + realistic v10) — the approved part vocabulary for RTU masters. | `disenos/trane/trane-rtu-realistic-v10.html` | ready |
+| ducteria-catalogo | pointer | 8 HVAC duct pieces (straights, elbows, strapped joints, transitions), voxel + realistic. | `disenos/ducteria/ducteria-catalogo-realistic-v1.html` | ready |
+| tuberia-hidraulica-catalogo | pointer | 13 hydraulic pipe pieces (elbows, downpipes, valves), voxel + realistic. | `disenos/tuberia-hidraulica/tuberia-hidraulica-catalogo-realistic-v1.html` | ready |
+| rtu-master-cinemex | recipe | Parameterized RTU master (two-section cabinet, fan ring, hood, curb) instanced per zone with per-part InstancedMesh. | cinemex `src/scene/architecture.js` · p6-final L4 0.80 (2026-07-15) | ready (recipe: `recipes/rtu-master-cinemex.md`) |
+| aero-fan-kit | module | `makeAeroBlade()` (scimitar blade: extruded Shape + per-vertex twist) + `makeFan(R, mat)` (venturi, torus+spoke guard, hub, 5 blades → {holder, spin}). Every HVAC design needs fans. | cuarto-3d.html:31634-31665 | ready |
+| pipe-run | module | Waypoint piping: oriented cylinders via `quaternion.setFromUnitVectors` + sphere elbows. Return the Group, never scene.add inside. | cuarto-3d.html:31620-31627 | ready |
+| prim-helpers | module | One-line `box/panel/cyl/tube` primitives with shadow flags — the base of every part builder. | cuarto-3d.html:31616-31619 | ready |
+| insulated-panel-wall | module | `panelWall(target,c,alongZ)`: cold-room insulated panel wall with vertical ribs at RIB pitch. | cuarto-3d.html:31683-31699 | pending-extraction |
+| pallet-rack-builder | module | `buildRack(a,b)`: industrial rack between two points — auto bays, zigzag frames, orange beams, deck levels. | cuarto-3d.html:31880-31926 | pending-extraction |
+| unit-cooler-builder | recipe | Evaporator builder: 2 fans, status LED, drip tray, hung/wall mount, world-space airDir/fanWorld. Per-instance materials for mutable parts (LED/blades) — the pattern matters. | cuarto-3d.html:31750-31790 | pending-extraction |
+| package-unit-builder | recipe | Package condenser builder: coil+fins, control panel, 2 top fans. | cuarto-3d.html:31795-31821 | pending-extraction |
+| voxel-store-builder | module | Color-bucketed voxel stores (`addVox/fillS/fillF`), static + hideable-facade stores. | hotel-torre-voxel.optimized.html:160-171 | ready (`parts/voxel-kit.mjs`, one module with the mesher) |
+| voxel-hidden-face-mesher | module | `buildStore()`: emits ONLY faces without an opaque neighbor (OCC set + FACE_DIRS) into one BufferGeometry per color — the perf leap of the voxel track. Transparent voxels never occlude (visual-quality decision, documented). | hotel-torre-voxel.optimized.html:537-605 | ready (`parts/voxel-kit.mjs`) |
+| merge-instancing-kit | module | `mergeBoxes(defs)` + `tMat(x,y,z)` + `makeIM(geo,mat,mats)`: compound-module instancing (88 furnished hotel bays + VAV ≈ 15 draws). 12 lines that enable the whole instanced realistic track. | edificio-hotel-realista-v1.html:230-259 | ready |
+
+## materials-textures/
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| paint-roughness-canvas-tex | module | `dataTex(w,h,draw)` + procedural "sand paint" roughnessMap with RepeatWrapping; carries the PBR palette lesson (metalness 0 = painted, 1 = metal; grey+metal reads black). | edificio-hotel-realista-v1.html:152-207 | ready |
+| glow-plane-recipe | module | `makeGlowPlane(w,h)`: blurred CanvasTexture plane + AdditiveBlending for surface-hugging halos. | cuarto-3d.html:32039-32049 | pending-extraction |
+| canvas-board-recipes | recipe | Cinemex menu/poster/diagram-board CanvasTexture recipes (draw, don't download; deterministic frames via poster_frame/display_frame). | cinemex `src/scene/surfaces.js` · p6-final L4 0.80 (2026-07-15) | ready (recipe: `recipes/canvas-board-recipes.md`) |
+
+## fx/ (continued — hotel/Alser)
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| path-flow-particles | module | Length-parameterized polyline (`makePath/pathPos`) + recycled `userData.t` spheres for refrigerant flow; air-plume variant with sin/cos wobble + fall. | cuarto-3d.html:31629-31631, 31841-31863, 32286-32305 | pending-extraction (top-7, pairs with pipe-run) |
+
+## controllers/ (continued — hotel/Alser)
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| equipment-state-machine | recipe | Per-equipment off/on/alarm: material registry keyed by equipment, `applyState` (emissive LED + PointLight + blade tint), alarm pulse loop. | cuarto-3d.html:31668-31672, 31868-31875, 32248-32285 | pending-extraction (top-8) |
+| day-night-state | recipe | `applyState()` + `setEm(color,...)` material registry to switch day/night rigs (sun/amb/fill/rim + window/sign emissives) + deterministic `litRoom(m,n)`. WARNING: registry keyed by color int — two semantic uses of one hex collide. | hotel-torre-voxel.optimized.html:171, 607-636 | pending-extraction |
+
+## markers-ui/ + dashboard mechanisms (hotel-realista-ensamblado — B11 Industrial, user-validated)
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| in-page-drill-overlays | recipe | 3-level drill (plant → floor/zone → unit) with NO router: raycast + userData.roomId → overlay panels toggled by CSS classes (.show/.vis); ESC/click-empty closes; URL never changes. | hotel-realista-ensamblado.html:7795-8306 | pending-extraction |
+| svg-hand-rolled-charts | recipe | `_svgLineChart`/`_svgBars` return SVG strings (path/area + grid + axes; rect bars) — 24h trend + per-unit bars with zero chart libraries. | hotel-realista-ensamblado.html:7924-7947 (same pattern dashboard-energetico-v1.html:389-460) | pending-extraction |
+| kpi-tile-gauge | recipe | Declarative KPI tiles per equipment type (`_dvKpiConfig`) rendering label+value+meter (semicircular SVG gauge `_dvArcD` or bar), refreshed ~1 Hz (`_dvRefreshKpis`). | hotel-realista-ensamblado.html:8071-8131 | pending-extraction |
+| per-unit-mini-scene | recipe | Dedicated WebGL mini-scene per unit detail view — mounted on open, destroyed on close (no context leak), main scene alive beneath: a per-equipment 3D twin at zero global per-frame cost. | hotel-realista-ensamblado.html:8012-8143 | pending-extraction |
+| zone-status-rollup | recipe | Aggregated normal/warning/alarm counts per zone with color chips + status-bar filter jumping straight to the units needing attention (fleet triage → detail). | hotel-realista-ensamblado.html:7955-7985, 7774-7785 | pending-extraction |
+
+## harness/ (continued — hotel)
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| render-stats-hud | module | FPS/draws/tris/geometries HUD from `renderer.info` sampled at 0.5s; diagnostico variant adds SHADOWS and 2x-RESOLUTION toggles for bottleneck isolation. | hotel-torre-voxel.optimized.html:43-45, 666-684 + .diagnostico.html:633-647 | ready |

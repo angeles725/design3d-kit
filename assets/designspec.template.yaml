@@ -1,0 +1,101 @@
+# DesignSpec template — see references/DESIGNSPEC.md for authoring rules.
+# Delete guidance comments after filling.
+
+design: my-design-slug            # fill: slug = design directory name
+track: threejs                    # fill: threejs | blender
+mode: standard                    # quick | standard | heavy (P0 decides)
+scale: "1 unit = 1 m"             # mandatory; add blockout ratio for threejs voxel pass:
+blockout_scale: "1 voxel = 0.1 m" # fill (threejs) — drives // SCALE: comment
+
+complexity:                       # pre-spec assessment (DESIGNSPEC.md) — sets minimum spec depth, checked at P3
+  scores: {silhouette: 0, components: 0, hierarchy: 0, repetition: 0,
+           material_layers: 0, detail: 0, occlusion: 0, action_readiness: 0}  # 0-3 each
+  tier: simple                    # sum 0-6 simple | 7-14 moderate | 15-24 complex
+
+environment:                      # P0 discovery OUTPUT — paths, never copies
+  overlays:
+    handbook: null                # fill: path or null
+    house_rules: null             # fill: REGLAS-DE-CASA-style block location or null
+    qa_tools: null                # fill: probe/capture dir or null
+    design_dir_root: null         # fill: e.g. disenos/ or null
+
+references:                       # P1 output — evidence, not vibes
+  - source: "https://example.com/datasheet.pdf"   # fill: url | file | image path
+    evidences: "overall dimensions + compressor placement"  # what THIS source proves
+    suitability: pass             # image refs only — pass | conditional | reject (P1 intake gate)
+
+dimensions_real:                  # from references — never invented; each value carries confidence
+  length_m: {value: 0.0, confidence: high}   # high | med | low — low = pre-authorized for
+  width_m: {value: 0.0, confidence: high}    #   P4 refine-spec amendment without full P3 re-gate
+  height_m: {value: 0.0, confidence: low}
+
+hierarchy:                        # animation-ready BEFORE any geometry
+  - name: root
+    children:
+      - name: body                # fill: one node per part
+        pivot: [0, 0, 0]          # local origin, meters
+        animation: none           # none | spin_y | slide_x | open_hinge | custom:<desc>
+      - name: fan_1
+        pivot: [0.0, 0.0, 0.0]    # EXACT rotation center
+        animation: spin_y
+      - name: blade_array         # opposed/linked moving parts → closure geometry REQUIRED
+        pivot: [0.0, 0.5, 0.0]
+        animation: "rotate 0..θc" # state the REAL travel — never a naive 0..90
+        closure:
+          chord_m: 0.180          # blade chord
+          pitch_m: 0.150          # axle pitch
+          closure_angle_deg: 33.6 # θc = acos(pitch/chord) — derived, cite the inputs
+      - name: discharge_pipe      # appendage → attachment contract REQUIRED (no floating parts)
+        pivot: [0.4, 1.2, 0.0]    # = local_start
+        animation: none
+        attachment:
+          parent_socket: compressor_outlet  # named point on the parent it grows from
+          local_start: [0.4, 1.2, 0.0]      # build root→tip: mesh spans start→end, never centered
+          local_end: [0.4, 2.0, 0.6]
+          length_confidence: med            # high | med | low — low = P4 refine-spec amendable
+          contact_type: embedded            # embedded | socket | overlap | hinge | surface-contact | glued
+          embed_depth: 0.05                 # meters INTO the parent (>0, or use overlap) — guarantees contact
+          gap_tolerance: 0.0
+
+materials:                        # near-binary metalness; every entry carries evidence + source + confidence
+  - id: housing
+    family: painted-metal         # painted-metal | bare-metal | plastic | glass | rubber | concrete | copper | water
+    color: "#4a5568"              # fill
+    metalness: 0.0                # 0.0-0.05 dielectric | 0.85-1.0 metal — nothing between
+    roughness: 0.6                # fill from evidence
+    evidence: "Filament F0 table / overlay palette §3.1"   # fill
+    source: table                 # extracted | table | estimated
+    confidence: 0.9               # cap 0.86 if from a single image; P3 blocks estimated <0.7 without stated assumptions
+
+critical_features:                # 3-5 gates, hard max 5; each can fail a pass ALONE
+  - id: feature-slug              # group repeated parts into one system: "rack-rows", not rack-1/2/3
+    desc: "what must read correctly, in pixel terms"       # fill
+    threshold: 0.75               # per-feature gate, judged independently
+
+# important_features:             # optional, max 3 — reviewed AVERAGE must be >= 0.65
+#   - id: cable-routing
+#     desc: "trays route sensibly wall-to-rack"
+
+quality_contract:
+  global_min: 0.75
+  perf_budget:                    # threejs: draws + tris (overlay device table or track defaults)
+    draws: 800
+    tris: 2000000
+    # blender: polys + objects instead
+    # polys: 500000
+    # objects: 200
+
+camera:
+  azimuth_deg: 42                 # diagonal grammar: 40-45
+  elevation_deg: 24               # 20-28
+  fov: 38                         # 32-42 equipment hero | 70-90 plant/campus
+
+lighting: house-rig               # house-rig | studio (RectAreaLight product variant)
+
+ui_controls:                      # threejs track only — spec panel toggles
+  - "POWER ON-OFF"
+  - "AUTO-ROTATE"
+
+# render:                         # blender track only
+#   engine: eevee                 # eevee | cycles
+#   samples: 64

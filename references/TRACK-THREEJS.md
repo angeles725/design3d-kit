@@ -1,0 +1,117 @@
+# TRACK-THREEJS — Three.js track adapter
+
+Single-file standalone HTML prototypes (importmap, no bundler). Blockout = voxel massing pass;
+build-out = parametric/PBR ladder. Reuse the `threejs-*` reference skills for technique — link,
+never duplicate.
+
+## Project-overlay discovery (P0)
+
+Probe the cwd (and repo root) for these; record found paths in `spec.environment.overlays`.
+Found overlays OVERRIDE the generic defaults below.
+
+| Probe for | Overlay provides | This-repo example (threejs-hvac-prototipos) |
+|---|---|---|
+| `research/HANDBOOK.md` | house norms: PBR palette, light rigs, scale table, device budgets, delivery kit specs | `/home/cristian/prototipos/three.js/research/HANDBOOK.md` |
+| REGLAS DE CASA block in `EQUIPOS-PENDIENTES.md` | fixed prompt-rules block for voxel passes | `/home/cristian/prototipos/three.js/EQUIPOS-PENDIENTES.md` §REGLAS DE CASA |
+| `research/tools/probe.mjs`, `capture.mjs`, `preflight.mjs` | QA harness (mechanical checks + captures + evidence-chain preflight, GATES.md step 0) | `/home/cristian/prototipos/three.js/research/tools/` |
+| `disenos/` | design-dir layout: one folder per equipment, own README table | `/home/cristian/prototipos/three.js/disenos/<equipo>/` |
+| `research/INDEX.md` + `CATALOG.md` | 44 distilled technique blocks for deep dives | `/home/cristian/prototipos/three.js/research/` |
+| `~/.claude/skills/threejs-*` | per-pass technique refs (geometry, materials, lighting, textures, animation, interaction, postprocessing, shaders, loaders, fundamentals) | global |
+
+## Generic defaults (used ONLY when no overlay found)
+
+- three.js r0.160.0 via importmap (unpkg), single standalone HTML file.
+- **Voxel/blockout pass**: all static voxels in ONE `InstancedMesh` per color (shared
+  `BoxGeometry(1,1,1)`, `setMatrixAt` + `instanceMatrix.needsUpdate = true`). Animated parts
+  (fans, dampers, couplings) in SEPARATE `Group`s outside the InstancedMesh. Flat-color
+  `MeshStandardMaterial`, no image textures.
+- Renderer: `ACESFilmicToneMapping` exposure 1.05–1.15, `outputColorSpace = SRGBColorSpace`,
+  `PCFSoftShadowMap` 2048², `setPixelRatio(min(devicePixelRatio, 2))`.
+- Light rig: white key `DirectionalLight(0xffffff, 1.5)` with shadows + blue fill
+  `(0x88aaff, 0.4)` + teal rim `(0x00d4aa, 0.2)` + ambient ~0.25 + IBL
+  `scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture`.
+- `OrbitControls` damping 0.08, autoRotate behind a toggle. `PerspectiveCamera` FOV 32–42
+  (equipment hero) / 70–90 (plant/campus). Never `OrthographicCamera`.
+- Scale: 1 world unit = 1 m; declare `// SCALE: 1 voxel = X m` at the top.
+- PROHIBITED in blockout: high-segment smooth geometry, image textures, extra libraries.
+- UI: header with design name, flow-color legend top-right, control panel bottom-right with the
+  spec's `ui_controls`, dark `#06080d` background, monospace font.
+- Template MUST include `<link rel="icon" href="data:,">` (a favicon 404 pollutes the console
+  sidecar) and a DYNAMIC HUD pass-label subtitle — set it from the current pass; a stale label
+  is an evidence-hygiene defect to blind judges.
+- Camera occlusion: side features (linkages, brackets) need standoff from the silhouette to
+  stay visible at the house az42 camera — check visibility at spec camera BEFORE gating.
+
+## Pass ladder (P4a → P5a)
+
+| Pass | Content | Technique refs |
+|---|---|---|
+| blockout | voxel massing: silhouette, proportions, color blocks, part decomposition | threejs-geometry (instancing) |
+| structural | parametric rebuild: Cylinder/Torus/Extrude/Lathe, direct vertex edits for bespoke parts | threejs-geometry |
+| materials | named PBR palette (`const M = {...}`), near-binary metalness, `MeshPhysicalMaterial` for clearcoat/glass, emissive screens/LEDs | threejs-materials |
+| surface | CanvasTexture detail (fins, nameplates, dials) — draw, don't download | threejs-textures |
+| lighting-camera | rig per spec (`house-rig` or studio RectAreaLight variant), fog, composition: azimuth 40–45°, elevation 20–28° | threejs-lighting |
+| interaction-ui | spec `ui_controls`: toggles, raycast hotspots, DOM overlays | threejs-interaction |
+| optimization | draws: BatchedMesh/merge · tris: LOD/simplify/instanceColor; re-probe vs budget | threejs-fundamentals |
+
+## QA commands (mechanical checks + capture) — verbatim
+
+Serve the REPO ROOT (not the design dir), run `node` FROM the repo root, and pass
+repo-root-relative paths — probe/capture hardcode `localhost:8123` and resolve paths against
+the server root (`PORT` env overrides capture's port).
+
+```bash
+cd <repo-root>
+python3 -m http.server 8123 &         # serve repo root; kill after the gate
+# mechanical: median draws/tris JSON per file (fps is INFORMATIONAL ONLY under SwiftShader —
+# gate on draws/tris, never on fps)
+node research/tools/probe.mjs "disenos/<equipo>/<file>.html"
+# capture: <basename>.png + <basename>.console.json
+# (console/pageerror evidence — the console-clean mechanical check reads THIS sidecar)
+# GATE EVIDENCE USES --dpr 3 (~2064 px long edge): the blind judge consumes the image downscaled
+# to ~2000 px, so DPR 4 pays to rasterize pixels the judge discards — and the downscale can invent
+# absence defects for fine detail. DPR 4 is reserved for the P7 hero/thumbnail and for
+# native-resolution CROPS of fine-detail regions (cinemex: 8 attempts burned on arrowheads that
+# were present at 1:1 in the very capture the judge scored downscaled).
+node research/tools/capture.mjs --dpr 3 "disenos/<equipo>/runs/<run-dir>" "disenos/<equipo>/<file>.html"
+# extra views/states (GATES.md look-dev + kinematic evidence): --url-suffix appends a query
+# string — the PAGE must implement reading these params (?view= / ?state= / ?demo=)
+node research/tools/capture.mjs --url-suffix "state=90" "<run-dir>" "<file>.html"
+# BEFORE spending a multi-shot attempt (GATES.md step 0): prove every shot in the evidence set
+# renders a distinct, non-default view — an unknown value on a known query key silently resets
+# the whole app state and produces N pictures of the default camera under N lying filenames
+node research/tools/preflight.mjs "<file>.html" --contract <shots.json>
+# passes whose deliverable lives in the DOM (interaction-ui; P6 when it scores the HUD) capture
+# the whole viewport, never canvas-only (GATES.md §Capture)
+node research/tools/capture.mjs --shots <shots.json> --page --dpr 3 "<run-dir>" "<file>.html"
+```
+
+Probe may report draws/tris = 0/0 under a SwiftShader shader-compile stall (e.g.
+MeshPhysicalMaterial clearcoat): retry ONCE before treating the scene as broken — the capture
+PNG is the truth check.
+
+Then copy/rename the outputs to the gate artifact names (`<pass>-attempt<N>.png`,
+`<pass>-attempt<N>.console.json`) per GATES.md §Artifacts.
+
+No overlay tools? Skip probe — mechanical = console-clean only, from REAL evidence (a browser
+console or an equivalent harness), recorded as `mechanical.note: "probe unavailable:
+console-clean only"`. Never fake numbers.
+
+## Delivery kit (P7)
+
+| Deliverable | How |
+|---|---|
+| 4K hero PNG | `capture.mjs` (DPR 4 supersample) |
+| Catalog thumbnail | same harness, overlay's fixed framing if defined |
+| `.glb` | `research/tools/export-glb.mjs` (headless GLTFExporter via the page's QA hook), then glTF-Transform — MEASURE the optimized size; plain `optimize` measured WORSE on a CanvasTexture-dominated scene (cinemex 1.09→1.16 MB) and draco bought only 6% |
+| README row | append to the design folder's README table (overlay convention) |
+
+**Every harness P7 builds is a REPO TOOL** (`research/tools/`, next to probe/capture/preflight),
+never a throwaway script — an unpreserved harness is a rebuild tax on the next design's P7
+(damper-motorizado preserved nothing; cinemex rebuilt the GLB driver from scratch).
+
+**GLTFExporter caveats** (encoded in `export-glb.mjs`): it rasterizes reachable textures through
+canvas `drawImage` and THROWS on non-drawable images (DataTexture, PMREM render targets) — strip
+those texture slots plus `scene.environment`/`background` before export; and import GLTFExporter
+through the PAGE's importmap (`three/addons/`) so exporter and scene share ONE three.js instance —
+a second copy fails `instanceof` checks.

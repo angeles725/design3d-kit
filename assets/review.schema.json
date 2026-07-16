@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "design3d/review.schema.json",
+  "title": "design3d gate review result",
+  "type": "object",
+  "required": ["pass", "global_score", "layer_scores", "features", "defects", "corrections", "mechanical", "verdict", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "pass": {
+      "type": "string",
+      "description": "Pass under review, e.g. blockout, structural, materials, surface, lighting-camera, interaction-ui, optimization, anim-rig, optimization-export, final"
+    },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "global_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "layer_scores": {
+      "type": "object",
+      "description": "Five fixed rubric layers, every review (adapted from Object Sculptor)",
+      "required": ["silhouetteProportion", "componentStructure", "formDetail", "materialSurface", "lightingCamera"],
+      "additionalProperties": false,
+      "properties": {
+        "silhouetteProportion": { "type": "number", "minimum": 0, "maximum": 1 },
+        "componentStructure": { "type": "number", "minimum": 0, "maximum": 1 },
+        "formDetail": { "type": "number", "minimum": 0, "maximum": 1 },
+        "materialSurface": { "type": "number", "minimum": 0, "maximum": 1 },
+        "lightingCamera": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "features": {
+      "type": "array",
+      "description": "One entry per spec critical_features[] item — all of them, every gate",
+      "items": {
+        "type": "object",
+        "required": ["id", "score", "threshold", "pass"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+          "pass": { "type": "boolean" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "important_features": {
+      "type": "array",
+      "description": "One entry per spec important_features[] item, when the spec defines any — same shape as features[]",
+      "items": {
+        "type": "object",
+        "required": ["id", "score", "threshold", "pass"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+          "pass": { "type": "boolean" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "important_average": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Average score of important_features[], when present; PASS formula requires >= 0.65"
+    },
+    "assumed_thresholds": {
+      "type": "object",
+      "description": "Retrofit gate only: record assumed thresholds here instead of a root global_min key",
+      "additionalProperties": false,
+      "properties": {
+        "global_min": { "type": "number", "minimum": 0, "maximum": 1 },
+        "feature_default": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "defects": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What is wrong, in pixel terms"
+    },
+    "corrections": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Imperative, actionable fixes for the modeler"
+    },
+    "mechanical": {
+      "type": "object",
+      "required": ["console_clean", "budget_pass"],
+      "additionalProperties": true,
+      "properties": {
+        "console_clean": { "type": "boolean" },
+        "draws": { "type": ["integer", "null"] },
+        "tris": { "type": ["integer", "null"] },
+        "polys": { "type": ["integer", "null"] },
+        "objects": { "type": ["integer", "null"] },
+        "fps": { "type": ["integer", "null"] },
+        "budget_pass": { "type": "boolean" },
+        "tests": {
+          "type": ["object", "null"],
+          "description": "Invariant suite result when the design has one; null (with a note) when it has none — never fabricate",
+          "required": ["command", "pass", "fail"],
+          "additionalProperties": false,
+          "properties": {
+            "command": { "type": "string" },
+            "pass": { "type": "integer", "minimum": 0 },
+            "fail": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "note": { "type": "string", "description": "e.g. 'probe unavailable: console-clean only'" }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL"],
+      "description": "PASS iff mechanical green (incl. tests null-or-fail==0) AND global_score >= global_min AND every critical feature >= threshold AND (if spec has important_features) important_average >= 0.65 — the full formula lives in GATES.md §Verdict"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["continue", "refine-spec", "refine-code", "request-input", "stop"],
+      "description": "continue=advance pass; refine-spec=fix YAML first, never patch code around a bad spec; refine-code=apply corrections; request-input=need better reference; stop=fidelity unreachable from current inputs"
+    }
+  }
+}
