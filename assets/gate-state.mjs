@@ -122,7 +122,12 @@ for (const r of reviews) {
     problems.push(`${where}: PASS but screenshot ${r.base}.png missing`);
   }
   const gmin = specGlobalMin ?? j.assumed_thresholds?.global_min ?? null;
-  if (gmin !== null && Number.isFinite(j.global_score) && j.global_score < gmin - SCORE_TOL) {
+  if (gmin === null) {
+    // GATES.md §Retrofit gate: a spec-less design MUST either get a minimal design-spec.yaml or
+    // record assumed_thresholds in the review. A PASS carrying NEITHER has nothing bounding its
+    // global_score — flag it as a contract violation, never silently skip the global-min check.
+    problems.push(`${where}: PASS but no resolvable global_min (no spec quality_contract.global_min, no assumed_thresholds.global_min) — contract violation, GATES.md §Retrofit gate`);
+  } else if (Number.isFinite(j.global_score) && j.global_score < gmin - SCORE_TOL) {
     problems.push(`${where}: PASS but global_score ${j.global_score} < global_min ${gmin}`);
   }
 }
@@ -169,4 +174,10 @@ if (problems.length) {
   for (const p of problems) console.log(`  - ${p}`);
   process.exit(1);
 }
-console.log('\nclean: derivation coherent, cache matches.');
+// A coherent all-locked state with ZERO review artifacts is legitimate (exit 0), but its "clean"
+// must not read like a verification: say so, so a caller can tell "verified" from "zero evidence".
+if (reviews.length === 0) {
+  console.log('\nclean: no gate evidence yet (all passes locked); cache coherent.');
+} else {
+  console.log('\nclean: derivation coherent, cache matches.');
+}

@@ -63,8 +63,13 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      canvas-texture sprites and inactive DOM buttons as Chromium's crossed-out failed-texture
      placeholder in its first real DPR-3 full-page set. Caught by the orchestrator pre-look; set
      deleted, recaptured under SwiftShader, flag demoted to experimental-not-gate-safe in
-     `capture.mjs`. Its measured 4.5x in-pipeline speedup is REAL — re-qualify the flag per class
-     once the texture path is fixed; this rule gates its use as evidence, it does not forbid it.)
+     `capture.mjs`. Its measured 4.5x in-pipeline speedup is REAL — this rule gates its use as
+     evidence, it does not forbid it.) **An experimental/demoted flag carries a DEFINED EXIT
+     CONDITION, or the demotion is a permanent limbo nobody re-opens.** `--gpu`'s exit condition:
+     it graduates back to gate-safe when it PASSES the per-content-class qualification pilot this
+     rule requires — canvas textures, sprites, DOM raster in `--page` mode, full gate DPR —
+     pixel-compared clean against SwiftShader per class. Record that pilot as the graduation
+     evidence and lift the demotion in `capture.mjs`; until it passes, the flag stays experimental.
    - LOOK-DEV EVIDENCE — materials, lighting-camera and P6 REQUIRE the capture set, driven via
      URL params (`?view=...`; threejs: capture.mjs `--url-suffix`): `neutral` + `grazing`
      (low-angle close-up exposing smooth-plastic highlights, weak normals, tiling) +

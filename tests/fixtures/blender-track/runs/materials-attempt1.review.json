@@ -1,0 +1,38 @@
+{
+  "pass": "materials",
+  "attempt": 1,
+  "global_score": 0.8,
+  "layer_scores": {
+    "silhouetteProportion": 0.8,
+    "componentStructure": 0.8,
+    "formDetail": 0.8,
+    "materialSurface": 0.78,
+    "lightingCamera": 0.78
+  },
+  "features": [
+    {
+      "id": "materials-primary-form",
+      "score": 0.84,
+      "threshold": 0.75,
+      "pass": true
+    },
+    {
+      "id": "materials-secondary-read",
+      "score": 0.8,
+      "threshold": 0.72,
+      "pass": true
+    }
+  ],
+  "defects": [],
+  "corrections": [],
+  "mechanical": {
+    "console_clean": true,
+    "draws": 12,
+    "tris": 1400,
+    "fps": 60,
+    "budget_pass": true,
+    "tests": null
+  },
+  "verdict": "PASS",
+  "action": "continue"
+}

@@ -1,0 +1,7 @@
+design: lineage-reset-live
+track: threejs
+passes:
+  blockout:
+    status: passed
+    attempts: 1
+    score: 0.8

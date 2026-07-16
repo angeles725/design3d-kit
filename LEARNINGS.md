@@ -28,7 +28,12 @@ One table row per learning:
   a false provenance onto the ones that are not). A rule you cannot trace is a rule you cannot
   revoke.
 - **learning** — one imperative sentence (a rule, not a story).
-- **evidence** — file/screenshot/review pointer that proves it.
+- **evidence** — file/screenshot/review pointer that proves it, graded with a certainty marker:
+  `[measured]` (an artifact on disk anyone can re-open — the pointer IS the proof) >
+  `[session-observed]` (really happened, but left no artifact; the observation is testimony) >
+  `[inferred]` (deduced, never directly seen). **A claim with no citation takes the LOWEST
+  marker.** Existing rows already use this grading informally (`measured:` / `session-observed`
+  prefixes) — they remain valid as written; do NOT rewrite existing rows to the bracketed form.
 - **status lifecycle** — `staged` → *(USER promotes)* → `new` → `confirmed×N` (bumped when a later
   run re-observes it) → `PROMOTE` (at ×2, flag for folding into the proper `references/` file) →
   `promoted` (folded; prune the row on the next retro) · `rejected` (disproven — keep as tombstone).
@@ -37,6 +42,7 @@ One table row per learning:
 
 | date | project | design | track | pass | origin | how | learning | evidence | status |
 |---|---|---|---|---|---|---|---|---|---|
+| 2026-07-16 | design3d-kit | (synthetic fixtures) | blender | (tooling) | fixtures round, blender-track test | pre-review-catch | Document what a Blender-track reviewer truthfully records for `mechanical.console_clean`/`budget_pass` — gate-state requires both `=== true` on EVERY PASS review, but the Blender track has no browser console or probe, so today a truthful reviewer cannot satisfy the checker without inventing values. | [measured] first synthetic exercise of the blender ladder: tests/gate-state.test.mjs blender-track scenario (its fixture had to hardcode console_clean/budget_pass true to derive clean), 2026-07-16 | staged |
 
 ## Active ledger
 
@@ -64,6 +70,8 @@ Promoted §Staged rows land HERE, keeping their provenance intact.
 | 2026-07-14 | threejs-hvac-prototipos | cinemex-hvac-lorawan | threejs | p6-final | p6 a1 vs p6 L2 a1 | mechanical-failure | Embed the judge output contract — `review.schema.json`'s EXACT field names — VERBATIM in every reviewer brief; never point a judge at the schema file. The judge returns that schema and nothing invented. | A/B measured in one round: p6-final-attempt1 + its predecessor returned off-schema JSON (invented layer keys, `evidence`/`expectation` fields) and were normalized BY HAND (mechanical.note); the L2 brief embedded the exact field names → p6-final-l2-attempt1 came back schema-clean on the first try | promoted (fixed: ROLES.md §render-reviewer, 2026-07-16 user-delegated) |
 | 2026-07-14 | threejs-hvac-prototipos | cinemex-hvac-lorawan | threejs | (spec) | P6 L2, RTU amendment | improvised-win | After a mid-run spec refinement, P3 revalidation is SCOPED to the touched fields (post-refine-spec scoped P3) — the validator sees only what changed. A full re-sweep is cost with no signal. | measured: the RTU amendment's FAIL → prescribed-fix → PASS cycle took minutes because the validator saw only the touched fields (retro §Appended live 2026-07-14 night, item 4) | promoted (fixed: GATES.md §Verdict refine-spec + PIPELINE.md P3 row, 2026-07-16 user-delegated) |
 | 2026-07-14 | threejs-hvac-prototipos | cinemex-hvac-lorawan | threejs | (orchestration) | P6 L2 correction round | improvised-win | ONE writer owns the working tree for a correction round; the orchestrator EXTENDS its scope with numbered extensions carrying pre-diagnosed root causes — never a second writer on the same tree. | measured: 11 items through one tree owner via numbered SendMessage extensions with pre-diagnosed root causes → 234/234 green (retro §Appended live 2026-07-14 night, item 5) | promoted (fixed: ROLES.md §Fan-out decision table, 2026-07-16 user-delegated) |
+| 2026-07-16 | design3d-kit | (synthetic fixtures) | both | (tooling) | fixtures round, intentional RED test | pre-review-catch | A checker that resolves its threshold to null must FLAG, not skip — a PASS review with neither spec `quality_contract.global_min` nor `assumed_thresholds.global_min` is a contract violation (GATES.md §Retrofit gate mandates one of the two), never a silently skipped check. | [measured] the intentional RED test (globalmin-nomin fixture: verdict PASS at global_score 0.4 exited 0 "clean") + pre-fix assets/gate-state.mjs:124 `gmin ... ?? null` skip | promoted (fixed: assets/gate-state.mjs global_min contract flag, 2026-07-16 user-delegated) |
+| 2026-07-16 | design3d-kit + anti-ai-ui-kit | (kit maintenance) | both | (kit hygiene) | 2026-07-16 session kit sweep | mechanical-failure | A kit that accepts a delta COMMITS it in the same session — accepted-but-uncommitted kit work was found in TWO kits the same session, and verify-kit-clean at SessionStart is the backstop that keeps it from recurring. | [measured] git status: design3d's unversioned 2026-07-15 PIPELINE.md edit (v1.6 changelog records the skipped traceability) + anti-ai-ui's 3 accepted deltas dirty since 07-15, landed as commit 02c8aef | promoted (fixed: assets/toolbelt/verify-kit-clean.sh both-kits SessionStart check, 2026-07-16 user-delegated) |
 
 ### Active — legacy schema (7 columns, pre-provenance)
 

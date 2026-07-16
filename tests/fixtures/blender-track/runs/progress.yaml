@@ -1,0 +1,23 @@
+design: blender-track
+track: blender
+passes:
+  blockout:
+    status: passed
+    attempts: 1
+    score: 0.8
+  structural:
+    status: passed
+    attempts: 1
+    score: 0.8
+  materials:
+    status: passed
+    attempts: 1
+    score: 0.8
+  lighting-camera:
+    status: passed
+    attempts: 1
+    score: 0.8
+  anim-rig:
+    status: passed
+    attempts: 1
+    score: 0.8

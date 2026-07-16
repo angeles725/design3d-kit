@@ -1,0 +1,6 @@
+design: globalmin-assumed-below
+passes:
+  blockout:
+    status: passed
+    attempts: 1
+    score: 0.7

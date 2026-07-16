@@ -1,0 +1,36 @@
+{
+  "pass": "blockout",
+  "attempt": 1,
+  "global_score": 0.4,
+  "layer_scores": {
+    "silhouetteProportion": 0.8,
+    "componentStructure": 0.8,
+    "formDetail": 0.8,
+    "materialSurface": 0.78,
+    "lightingCamera": 0.78
+  },
+  "features": [
+    {
+      "id": "blockout-primary-form",
+      "score": 0.5,
+      "threshold": 0.4,
+      "pass": true
+    }
+  ],
+  "defects": [],
+  "corrections": [],
+  "mechanical": {
+    "console_clean": true,
+    "draws": 12,
+    "tris": 1400,
+    "fps": 60,
+    "budget_pass": true,
+    "tests": {
+      "command": "node --test tests/*.test.mjs",
+      "pass": 5,
+      "fail": 0
+    }
+  },
+  "verdict": "PASS",
+  "action": "continue"
+}

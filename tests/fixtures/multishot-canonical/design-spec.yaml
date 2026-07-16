@@ -1,0 +1,4 @@
+name: multishot-canonical
+track: threejs
+quality_contract:
+  global_min: 0.75

@@ -1,0 +1,4 @@
+name: blender-track
+track: blender
+quality_contract:
+  global_min: 0.75

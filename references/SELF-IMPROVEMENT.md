@@ -6,7 +6,8 @@
 
 - **Kit structural deltas** (SKILL.md, `references/`) — proposed in the retro. A human applies them
   (optionally with `skill-improver`). Never edit the kit from inside a run.
-- **LEARNINGS entries** — **STAGED, not appended.** P8 writes them to `LEARNINGS.md` §Staged with
+- **LEARNINGS entries** — **STAGED, not appended.** The run stages them (live append at first
+  surprise, or P8 for P8-surfaced lessons) to `LEARNINGS.md` §Staged with
   status `staged`. Staged rows are NOT loaded at P0 and are NEVER binding. Only the user promotes a
   row into §Active ledger.
 
@@ -31,7 +32,11 @@ focus completion + mid-run cadence). Triggers, any one of them:
 
 Open `<design-dir>/runs/<YYYY-MM-DD>-retro.md` marked `IN PROGRESS`, append lessons AS THEY SURFACE
 (cinemex's three deepest lessons were born mid-run and would not have survived to P8 from a dead
-session). This is propose-only writing to a file no gate reads — it cannot corrupt the run. P8 then
+session). This is propose-only writing to a file no gate reads — it cannot corrupt the run.
+**Every live append that stages a learning writes its `LEARNINGS.md` §Staged row AT APPEND TIME,
+in the same edit — not at P8.** P8 DEDUPES and FINALIZES the staged set; it does not create it.
+A queue row that waits for P8 dies with the crash the early-open rule exists to survive, and until
+it exists the user's review queue under-reports what the run has already proposed. P8 then
 finalizes the same file instead of reconstructing the run from memory.
 
 ## Run-end protocol (P8)
@@ -43,12 +48,14 @@ finalizes the same file instead of reconstructing the run from memory.
 1. Fill `assets/retro.template.md` → `<design-dir>/runs/<YYYY-MM-DD>-retro.md`, seeded with
    `<!-- review-status: pending -->`. When the repo has a `research/retros/` convention, add a
    one-line cross-link entry there.
-2. **DEDUPE FIRST**: read the current kit (`references/*` + `LEARNINGS.md` §Active) BEFORE proposing.
-   A lesson the kit already encodes goes under "Already covered", not into a new row. Listing them
-   is the proof the dedupe ran.
-3. **Stage LEARNINGS entries**: one row per non-obvious lesson (gate failures and their fixes are
-   prime candidates) into §Staged, status `staged`. Rule-shaped, evidence-pointed, with full
-   provenance (see the row schema in LEARNINGS.md).
+2. **DEDUPE FIRST**: read the current kit (`references/*` + `LEARNINGS.md` §Active **and §Staged**)
+   BEFORE proposing. A lesson the kit already encodes goes under "Already covered", not into a new
+   row — and a lesson the run already live-staged (§Retro triggers writes the §Staged row at append
+   time) is already queued, not new. Listing them is the proof the dedupe ran.
+3. **Finalize the staged set — create only what P8 itself surfaced**: verify every live-appended
+   lesson already carries its §Staged row (backfill any the run missed, flagging the miss); stage a
+   NEW row only for a lesson that first surfaced at P8. Rule-shaped, evidence-pointed, with full
+   provenance (see the row schema in LEARNINGS.md). P8 never re-creates a row live staging wrote.
 4. **PROPOSE confirmations — never perform them.** If this run re-observed an existing §Active entry,
    write a STAGED row citing that entry (`re-confirms: <active row>`) with your evidence. **A run
    NEVER edits an §Active row**, not even to bump its status: `confirmed×N` is BINDING, so a bump is
@@ -78,12 +85,23 @@ Every retro carries a top marker `<!-- review-status: pending -->` (the template
 user has applied or dismissed its deltas, they flip it to
 `<!-- review-status: applied <YYYY-MM-DD> · kit v<version> -->` or
 `<!-- review-status: dismissed <YYYY-MM-DD> -->` (exact format — tooling parses only the first
-HTML-comment block). Same marker convention for staged kit deltas written as standalone files.
+HTML-comment block). **A live append to a retro whose marker already reads `applied`/`dismissed`
+MUST reset the marker to `<!-- review-status: pending -->` in the same edit**: the adjudication
+covered only the content that existed at its date, and a marker that predates its content conceals
+the queue (cinemex: 8 candidate deltas sat invisible inside an "applied" retro until a manual read
+found them). Same marker convention for staged kit deltas written as standalone files.
 A retro older than ~7 days still `pending` is ESCALATED: surface it to the user at the next P0
 instead of letting it rot (research-sdd's aging rule, sans sweeper).
 
 **Traceability, both directions.** A kit edit that applies a delta records which retro it came from;
 the retro records what it became. "Why does this rule exist?" must be answerable from either end.
+Concretely: every kit commit that applies retro deltas carries a commit trailer
+`Retro: <design>/runs/<retro-file>.md@<short-sha>`, where `<short-sha>` is the last commit touching
+that retro in the design repo (`git log -1 --format=%h -- <retro>` from the design dir). When the
+retro is untracked or git is unavailable, OMIT the `@<sha>` suffix and write the bare
+`Retro: <design>/runs/<retro-file>.md` — the same degradation research-sdd's stage-retro.sh uses
+(it drops the suffix rather than inventing one). The forward link stays in the retro's marker
+(`applied <date> · kit v<version>`), so the pair closes the loop in both directions.
 
 **The applier does not self-approve.** For any non-trivial kit delta, an INDEPENDENT fresh-context
 reviewer scores each applied change as FAITHFUL / DRIFT / HALLUCINATION / MISSING / DUPLICATE against

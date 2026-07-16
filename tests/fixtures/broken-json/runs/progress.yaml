@@ -1,0 +1,4 @@
+design: broken-json
+phases:
+  p0-intake:
+    status: completed

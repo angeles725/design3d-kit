@@ -1,0 +1,6 @@
+design: globalmin-nomin
+passes:
+  blockout:
+    status: passed
+    attempts: 1
+    score: 0.4

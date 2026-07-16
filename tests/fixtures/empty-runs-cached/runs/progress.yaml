@@ -1,0 +1,4 @@
+design: empty-runs-cached
+phases:
+  p0-intake:
+    status: completed
