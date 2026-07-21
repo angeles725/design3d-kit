@@ -353,5 +353,21 @@ a suffix-only set reads as a false `failed(1)` + drift (cinemex interaction-ui, 
 `progress.yaml`
 with `{status, attempts, score, action, screenshot, review}` — atomically, per PIPELINE.md.
 
+**Capture lifecycle (EVIDENCE vs EPHEMERAL)**: every capture written is one of two things —
+EVIDENCE, bound to a run note or gate artifact either by its exact canonical name
+(`<pass>[-l<L>]-attempt<N>.*`) or by a glob the note documents explicitly, OR EPHEMERAL, written
+to the session scratchpad and NEVER to `runs/assets/`. Route working/throwaway frames to the
+scratchpad at write time so they never accumulate under the design dir.
+
+**Capture-GC (at every round/pass close)**: sweep `runs/assets/` for files bound to no note or gate
+(no exact canonical name, no documented glob), report the census in the run note
+(`kept N / deleted N / bytes freed`), and delete the orphans. Prunable once its attempt closes:
+superseded working frames (per-shot `frame0`/`frame1`, `lights-on`/`lights-off` variants of a shot
+whose representative already passed). NEVER prunable: the canonical `<pass>[-l<L>]-attempt<N>.*` gate
+captures — `gate-state.mjs` derives pass state from those exact basenames, so deleting one silently
+rewrites gate history. (Measured 2026-07-18: `runs/assets/` had grown to 432 PNGs / 285 MB with only
+28 bound by exact name — the on-gate-close cleanup below is not enough alone; census +
+scratchpad-routing + name protection are what bound the growth.)
+
 **Capture cleanup (on gate close)**: delete superseded attempt PNGs/consoles and raw
 pre-rename capture duplicates; keep the passing attempt's PNG + ALL review JSONs.
