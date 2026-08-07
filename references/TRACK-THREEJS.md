@@ -81,6 +81,15 @@ node research/tools/probe.mjs "disenos/<equipo>/<file>.html"
 # native-resolution CROPS of fine-detail regions (cinemex: 8 attempts burned on arrowheads that
 # were present at 1:1 in the very capture the judge scored downscaled).
 node research/tools/capture.mjs --dpr 3 "disenos/<equipo>/runs/<run-dir>" "disenos/<equipo>/<file>.html"
+# OBJECTIVE material-colour anchor (mechanical; ONLY when the spec declares colorTarget — v1.10 / block53):
+# measure the render crop's mean sRGB vs the spec target and record the CIEDE2000 distance as
+# `mechanical.color_delta_e00` in the review. The reviewer judges IDENTITY (right shape/part); this SCRIPT
+# judges the colour VALUE — fixing the measured reviewer-variance on "reads as the right material"
+# (identical stainless render scored 0.80 vs 0.57). gate-state enforces color_delta_e00 <= deltaE00Max.
+# Target from the spec `colorTarget.srgb`, or `--target-png <golden.png> --target-crop <geom>` when a
+# passing golden render exists but no photo does.
+node research/tools/material-color-probe.mjs "disenos/<equipo>/runs/<run-dir>/<pass>-attempt<N>.png" \
+  --crop <WxH+X+Y> --target <R,G,B> --max <deltaE00Max>
 # extra views/states (GATES.md look-dev + kinematic evidence): --url-suffix appends a query
 # string — the PAGE must implement reading these params (?view= / ?state= / ?demo=)
 node research/tools/capture.mjs --url-suffix "state=90" "<run-dir>" "<file>.html"

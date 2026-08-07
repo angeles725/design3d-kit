@@ -46,6 +46,19 @@ const matSteel = new THREE.MeshStandardMaterial({ color:0xd2d6d8, metalness:0.9,
    reflection; the brush texture reads as satin 304 and hides the reflected horizon.
 4. Never RectAreaLight in the headless track (stalls SwiftShader) — the frontal DirectionalLight is
    the substitute.
+5. **Declare a `colorTarget` so the material read is gated OBJECTIVELY, not by a reviewer guess**
+   (design3d v1.10 / research/threejs-block53 — the brushed-stainless read was measured
+   reviewer-variance-dominated: an identical render scored 0.80 vs 0.57). This recipe's rendered stainless
+   lands near mean sRGB `(86, 92, 97)` under the house ACES rig (measured on the v1.8 mesa/lavavajillas
+   passing renders). Seed:
+   ```yaml
+   colorTarget:            # objective material-read anchor (gate-state enforces dE00 <= max)
+     srgb: [86, 92, 97]    # RENDERED value under the house rig, NOT the albedo hex #d2d6d8
+     deltaE00Max: 6.0      # ~6 = "reads as satin 304"; tighten for a hero
+     crop: "500x140+1300+780"   # a flat body/top region at the spec camera (per-asset)
+   ```
+   The reviewer still confirms IDENTITY (hood/legs/panel present); the probe judges the value. Re-measure
+   the target from a golden render's crop (`material-color-probe.mjs --target-png`) when the rig changes.
 
 **Evidence**: lavavajillas materials-attempt2 PASS 0.78 (attempt1 0.73 dark → pass); recipe reused
 16/18 nave-panccadia equipment assets. `disenos/nave-panccadia/equipos/lavavajillas/runs/materials-attempt2.review.json`.
