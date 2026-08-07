@@ -59,15 +59,48 @@ const problems = [];
 // read, a PASS review with a sub-minimum global sails through the checker silently (audit D7).
 // Retrofit designs without a spec fall back to each review's own `assumed_thresholds.global_min`.
 let specGlobalMin = null;
+// OPTIONAL `gate_passes:` — an EXPLICIT declared pass-subset for a flat-catalog run (N independent
+// simple assets, each closing on one gate, e.g. `gate_passes: [materials]`). When present the
+// derivation ladder becomes exactly this subset in canonical order, and progress.yaml is only
+// expected to cover it. ABSENT → the full in-order ladder, byte-identical to before (pure superset).
+// It is NOT derived from complexity.tier — a subset is only ever active when the spec declares it.
+let gatePasses = null;
 const specPath = path.join(dir, 'design-spec.yaml');
 if (fs.existsSync(specPath)) {
-  const m = fs.readFileSync(specPath, 'utf8').match(/^\s*global_min:\s*([\d.]+)\s*$/m);
+  const specText = fs.readFileSync(specPath, 'utf8');
+  const m = specText.match(/^\s*global_min:\s*([\d.]+)\s*$/m);
   if (m) specGlobalMin = Number(m[1]);
+  // Loose YAML like global_min above: inline `gate_passes: [a, b]` or a block list of `- a` lines.
+  const inline = specText.match(/^\s*gate_passes:\s*\[([^\]]*)\]\s*$/m);
+  if (inline) {
+    gatePasses = inline[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  } else if (/^\s*gate_passes:\s*$/m.test(specText)) {
+    const lines = specText.split('\n');
+    gatePasses = [];
+    for (let i = lines.findIndex((l) => /^\s*gate_passes:\s*$/.test(l)) + 1; i < lines.length; i++) {
+      const mm = lines[i].match(/^\s*-\s*(['"]?)([\w-]+)\1\s*$/);
+      if (mm) gatePasses.push(mm[2]); else break; // block list is contiguous; first non-item ends it
+    }
+  }
+  if (gatePasses && gatePasses.length === 0) gatePasses = null;
 }
 
 // ---- (a) derive ladder pass states (stop at first incomplete) --------------------------------
-const LADDER = reviews.some((r) => r.prefix === 'anim-rig' || r.prefix === 'optimization-export')
+const BASE_LADDER = reviews.some((r) => r.prefix === 'anim-rig' || r.prefix === 'optimization-export')
   ? LADDER_BLENDER : LADDER_THREEJS;
+let LADDER = BASE_LADDER;
+if (gatePasses) {
+  // Validate each declared name against the real track ladder; an unknown name is a hard error,
+  // like the existing unknown-ladder-pass check on the progress.yaml cache below.
+  for (const name of gatePasses) {
+    if (!BASE_LADDER.includes(name)) {
+      problems.push(`spec gate_passes declares unknown ladder pass '${name}' (not in the ${BASE_LADDER === LADDER_BLENDER ? 'blender' : 'threejs'} ladder)`);
+    }
+  }
+  // The subset kept strictly in canonical ladder order; passes outside it are simply absent
+  // (not derived, never reported as locked).
+  LADDER = BASE_LADDER.filter((p) => gatePasses.includes(p));
+}
 const forPass = (pass) => reviews.filter((r) =>
   r.prefix === pass || (pass === 'p6-final' && r.prefix === 'final'));
 const derived = {}; // pass -> {status, attempts, score}

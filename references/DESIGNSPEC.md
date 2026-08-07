@@ -75,7 +75,10 @@ instead of object, subject dominated by hair/smoke/liquid) → request specific 
 See `assets/designspec.template.yaml` — every field annotated. Required top-level keys:
 `design`, `track`, `mode`, `scale`, `complexity`, `environment`, `references`,
 `dimensions_real`, `hierarchy`, `materials`, `critical_features`, `quality_contract`,
-`camera`, `lighting`. Optional: `important_features` (≤3). Per-node: `attachment` (required
-for appendages), `closure` (required for opposed/linked moving parts).
+`camera`, `lighting`. Optional: `important_features` (≤3); `gate_passes` (a declared gate
+pass-subset — a YAML list, inline `[materials]` or a block list — for a flat-catalog asset that
+closes on a subset of the ladder instead of the full 8-pass climb; `gate-state.mjs` derives exactly
+this subset in canonical order, PIPELINE.md §Triage flat-catalog + GATES.md §Verdict). Per-node:
+`attachment` (required for appendages), `closure` (required for opposed/linked moving parts).
 Track-specific: `ui_controls`, `blockout_scale` (threejs — the voxel ratio, e.g. `"1 voxel = 0.1 m"`,
 drives the `// SCALE:` comment), `render` (blender: engine, samples).

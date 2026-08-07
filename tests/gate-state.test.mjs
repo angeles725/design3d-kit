@@ -137,6 +137,23 @@ test('CONTRACT GAP (expected RED): PASS with neither spec global_min nor assumed
     `contract gap: PASS with global_score 0.4 and no resolvable global_min exited 0 clean:\n${r.stdout}`);
 });
 
+// ---- 5b. spec-declared gate_passes subset (flat-catalog run) --------------------------------------
+
+test('spec gate_passes:[materials] derives the materials-only ladder passed, no drift, clean exit', () => {
+  // Delta #1: a flat-catalog asset (a simple stainless box) declares its pass-subset instead of
+  // climbing the full 8-pass ladder. The derivation ladder becomes exactly [materials] in canonical
+  // order; passes outside the subset are absent (not derived, never reported locked), and
+  // progress.yaml is only expected to cover the declared subset.
+  const r = run('gate-passes-subset');
+  assert.equal(r.code, 0, `expected clean exit, got ${r.code}\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /materials\s+passed \(attempts 1, score 0\.78\)/);
+  // Passes outside the declared subset must not appear in the report at all.
+  assert.ok(!/blockout/.test(r.stdout), 'blockout is outside the declared subset and must be absent');
+  assert.ok(!/p6-final/.test(r.stdout), 'p6-final is outside the declared subset and must be absent');
+  assert.ok(!/drift/.test(r.stdout), `no drift may be reported on a declared subset:\n${r.stdout}`);
+  assert.match(r.stdout, /clean: derivation coherent, cache matches\./);
+});
+
 // ---- 6. blender-track ladder ---------------------------------------------------------------------
 
 test('blender track: an anim-rig review selects the blender ladder, not the threejs one', () => {

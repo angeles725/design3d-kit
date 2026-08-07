@@ -30,7 +30,14 @@ Found overlays OVERRIDE the generic defaults below.
 - Light rig: white key `DirectionalLight(0xffffff, 1.5)` with shadows + blue fill
   `(0x88aaff, 0.4)` + teal rim `(0x00d4aa, 0.2)` + ambient ~0.25 + IBL
   `scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture`.
-- `OrbitControls` damping 0.08, autoRotate behind a toggle. `PerspectiveCamera` FOV 32–42
+  - **Bare metal (metalness ~0.9)** reflects the dark house scene and reads BLACK — worst on the
+    vertical faces of boxy equipment, which the top-lit house rig misses. Headless-safe fix:
+    `scene.environmentIntensity ≈ 2.15` + a `HemisphereLight` + a FRONTAL `DirectionalLight` fill +
+    roughness ~0.30 with a brushed CanvasTexture roughnessMap. This is the headless complement to the
+    §3.3 studio variant (whose RectAreaLight stalls SwiftShader — see the QA-commands caveat).
+- `OrbitControls` damping 0.08, `autoRotate` DEFAULT OFF for gate captures (a rotating scene never
+  settles → capture's frame-settle loop writes `console_clean:false`); autoRotate stays behind a
+  toggle. `PerspectiveCamera` FOV 32–42
   (equipment hero) / 70–90 (plant/campus). Never `OrthographicCamera`.
 - Scale: 1 world unit = 1 m; declare `// SCALE: 1 voxel = X m` at the top.
 - PROHIBITED in blockout: high-segment smooth geometry, image textures, extra libraries.

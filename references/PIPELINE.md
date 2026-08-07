@@ -115,6 +115,16 @@ about to change the text visible in 10 of them.)
 - **standard** — one new design: full DAG.
 - **heavy** — a scene or ≥3 assets: per-asset P4/P5 loops (sequential, one asset at a time),
   then a scene-assembly pass, then P6. Fan out roles per ROLES.md.
+  - **flat-catalog shape** — N independent SIMPLE assets with no scene assembly (a standalone
+    equipment library, e.g. `equipos/<slug>/<slug>.html`): each asset closes on ONE gate, not the
+    full 8-pass ladder. Declare the subset EXPLICITLY in each asset's spec via `gate_passes:`
+    (e.g. `gate_passes: [materials]`, DESIGNSPEC.md) so `gate-state.mjs` derives a green,
+    auditable subset ladder instead of reporting the absent passes as `locked`. A simple stainless
+    box needs no blockout/structural/surface/lighting/interaction/optimization pass.
+  - **catalog extraction checkpoint** — a flat-catalog run has no scene, so it never reaches P7
+    and extracts nothing. It still owes a library-extraction pass: run the P7 library-extraction
+    step (below) PER GATED ASSET (or once at run end over all gated assets), else gate-passed
+    reusables are never extracted (LIBRARY.md exists to stop exactly that rebuild tax).
 - AUTO-ESCALATE standard→heavy when P2 reveals ≥3 assets or a full scene: announce
   (`spec shows N assets → escalating to heavy`) and continue. Ask ONLY if escalation crosses an
   explicit user cost/scope limit.

@@ -242,6 +242,13 @@ PASS  iff  mechanical checks green (console clean AND within perf budget
 A critical feature below threshold FAILS the pass even with a high global score — critical
 features exist precisely to stop "good enough" gestalt from masking missing identity details.
 
+**Declared pass-subset.** The derived ladder is normally the full track ladder in order. When a
+spec declares `gate_passes:` (an OPTIONAL, EXPLICIT subset — e.g. `gate_passes: [materials]` for a
+flat-catalog asset, DESIGNSPEC.md / PIPELINE.md §Triage flat-catalog), the derived ladder is exactly
+that subset kept in canonical order: passes outside it are absent (not derived, not `locked`), and
+progress.yaml is only expected to cover the declared subset. An unknown pass name in `gate_passes`
+is a hard error, like an unknown ladder pass in the cache.
+
 **Budget-headroom feedback** (P6 only): if final utilization is <50% of `perf_budget` AND any
 layer <0.8, the P6 review must state whether spending headroom would raise the weak layer —
 recommendation only, never a gate condition.

@@ -21,6 +21,7 @@ closes) · `superseded-by: <name>`.
 | export-glb | pointer | Headless GLTFExporter driver over the page's QA hook; strips non-drawable textures (DataTexture/PMREM); imports exporter through the page importmap (single three.js instance). | `research/tools/export-glb.mjs` (repo tool) · shipped cinemex P7 kit | ready |
 | qa-render-info-hook | recipe | `window.__qaRenderInfo = () => runtime.renderer.info.render{...}` — ground-truth draws/tris for probes; the wrapper-based counter it replaced under-read InstancedMesh 60×. | cinemex `main.js` · optimization 0.82 | ready (recipe: `recipes/qa-render-info-hook.md`) |
 | app-ready-flag | recipe | Readiness as `data-app-ready` on <html> AFTER warm-up, never a status-text write (a hard-coded status literal once clobbered derived HUD copy on every cold load). | cinemex `main.js` · interaction-ui 0.81 | ready (recipe: `recipes/app-ready-flag.md`) |
+| stainless-equipment-shell | recipe | ~80-line standalone-HTML scaffolding template for a single-equipment threejs asset: doctype + `data-app-ready` + favicon shim + HUD (name/dynamic pass-label/dims) + importmap + renderer (ACES 1.15, SRGB, baked PCFSoftShadow) + hero camera + OrbitControls (autoRotate OFF) + IBL + house 3-light rig + HemisphereLight + frontal fill + ground. Duplicated verbatim 18/18. | nave-panccadia `equipos/mesa-trabajo/mesa-trabajo.html:1-90` · 18/18 assets materials PASS 0.76–0.80 | ready (recipe: `harness/stainless-equipment-shell.md`) |
 
 ## fx/
 
@@ -58,6 +59,7 @@ closes) · `superseded-by: <name>`.
 | voxel-store-builder | module | Color-bucketed voxel stores (`addVox/fillS/fillF`), static + hideable-facade stores. | hotel-torre-voxel.optimized.html:160-171 | ready (`parts/voxel-kit.mjs`, one module with the mesher) |
 | voxel-hidden-face-mesher | module | `buildStore()`: emits ONLY faces without an opaque neighbor (OCC set + FACE_DIRS) into one BufferGeometry per color — the perf leap of the voxel track. Transparent voxels never occlude (visual-quality decision, documented). | hotel-torre-voxel.optimized.html:537-605 | ready (`parts/voxel-kit.mjs`) |
 | merge-instancing-kit | module | `mergeBoxes(defs)` + `tMat(x,y,z)` + `makeIM(geo,mat,mats)`: compound-module instancing (88 furnished hotel bays + VAV ≈ 15 draws). 12 lines that enable the whole instanced realistic track. | edificio-hotel-realista-v1.html:230-259 | ready |
+| gooseneck-spout | module | Swan-neck spout: quarter/half `TorusGeometry(R,r,seg,seg,sweep)` arc + riser + down-tip curving forward-down — quarter (`Math.PI/2`) for a dispenser hook, half (`Math.PI`) for a faucet gooseneck. Return the Group. | nave-panccadia `equipos/cuentalitros/cuentalitros.html:123` (reused `silla-lavabo/silla-lavabo.html:113`) · materials PASS 0.76 / 0.80 | ready (`parts/gooseneck-spout.md`) |
 
 ## materials-textures/
 
@@ -66,6 +68,8 @@ closes) · `superseded-by: <name>`.
 | paint-roughness-canvas-tex | module | `dataTex(w,h,draw)` + procedural "sand paint" roughnessMap with RepeatWrapping; carries the PBR palette lesson (metalness 0 = painted, 1 = metal; grey+metal reads black). | edificio-hotel-realista-v1.html:152-207 | ready |
 | glow-plane-recipe | module | `makeGlowPlane(w,h)`: blurred CanvasTexture plane + AdditiveBlending for surface-hugging halos. | cuarto-3d.html:32039-32049 | pending-extraction |
 | canvas-board-recipes | recipe | Cinemex menu/poster/diagram-board CanvasTexture recipes (draw, don't download; deterministic frames via poster_frame/display_frame). | cinemex `src/scene/surfaces.js` · p6-final L4 0.80 (2026-07-15) | ready (recipe: `recipes/canvas-board-recipes.md`) |
+| brushed-stainless-recipe | recipe | Headless bare stainless that reads satin, not black: `brushedRoughTex()` + `matSteel` (albedo #d2d6d8, metalness 0.9, roughness 0.30, brushed roughnessMap) + `environmentIntensity 2.15` + `HemisphereLight` + frontal `DirectionalLight` fill. Bare metal reflects the dark house scene and reads black on vertical faces the top rig misses. | nave-panccadia `equipos/lavavajillas/lavavajillas.html:87-104` · materials PASS 0.78 (attempt1 0.73 dark→pass); reused 16/18 assets | ready (recipe: `materials-textures/brushed-stainless-recipe.md`) |
+| transmission-free-glass | recipe | SwiftShader-SAFE door glass via `MeshStandardMaterial({metalness:0, roughness:0.12, transparent:true, opacity:~0.4})` — deliberately NOT `MeshPhysicalMaterial.transmission` (stalls the SwiftShader shader-compile). For oven/chamber doors over a visible rack. | nave-panccadia `equipos/horno-rotativo/horno-rotativo.html:104` (+ `camara-fermentacion/camara-fermentacion.html:103`) · materials PASS 0.78 | ready (recipe: `materials-textures/transmission-free-glass.md`) |
 
 ## fx/ (continued — hotel/Alser)
 
