@@ -1,0 +1,28 @@
+{
+  "pass": "materials",
+  "attempt": 1,
+  "global_score": 0.78,
+  "layer_scores": {
+    "materialSurface": 0.78
+  },
+  "features": [
+    {
+      "id": "stainless-body-read",
+      "score": 0.78,
+      "threshold": 0.75,
+      "pass": true
+    }
+  ],
+  "defects": [],
+  "corrections": [],
+  "mechanical": {
+    "console_clean": true,
+    "draws": 8,
+    "tris": 900,
+    "fps": 60,
+    "budget_pass": true,
+    "tests": null
+  },
+  "verdict": "PASS",
+  "action": "continue"
+}

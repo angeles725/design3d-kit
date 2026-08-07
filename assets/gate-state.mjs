@@ -73,19 +73,22 @@ let gatePasses = null;
 const specPath = path.join(dir, 'design-spec.yaml');
 if (fs.existsSync(specPath)) {
   const specText = fs.readFileSync(specPath, 'utf8');
-  const m = specText.match(/^\s*global_min:\s*([\d.]+)\s*$/m);
+  // Loose-YAML reads TOLERATE a trailing `# comment` (YAML allows it, and a user WILL write one —
+  // a `\s*$`-anchored field silently drops the value on `gate_passes: [materials]  # note`, so the
+  // asset climbs the full ladder and never derives green). `(?:\s*#.*)?$` absorbs the comment.
+  const m = specText.match(/^\s*global_min:\s*([\d.]+)(?:\s*#.*)?$/m);
   if (m) specGlobalMin = Number(m[1]);
-  const dm = specText.match(/^\s*deltaE00Max:\s*([\d.]+)\s*$/m);
+  const dm = specText.match(/^\s*deltaE00Max:\s*([\d.]+)(?:\s*#.*)?$/m);
   if (dm) specDeltaE00Max = Number(dm[1]);
   // Loose YAML like global_min above: inline `gate_passes: [a, b]` or a block list of `- a` lines.
-  const inline = specText.match(/^\s*gate_passes:\s*\[([^\]]*)\]\s*$/m);
+  const inline = specText.match(/^\s*gate_passes:\s*\[([^\]]*)\](?:\s*#.*)?$/m);
   if (inline) {
     gatePasses = inline[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-  } else if (/^\s*gate_passes:\s*$/m.test(specText)) {
+  } else if (/^\s*gate_passes:\s*(?:#.*)?$/m.test(specText)) {
     const lines = specText.split('\n');
     gatePasses = [];
-    for (let i = lines.findIndex((l) => /^\s*gate_passes:\s*$/.test(l)) + 1; i < lines.length; i++) {
-      const mm = lines[i].match(/^\s*-\s*(['"]?)([\w-]+)\1\s*$/);
+    for (let i = lines.findIndex((l) => /^\s*gate_passes:\s*(?:#.*)?$/.test(l)) + 1; i < lines.length; i++) {
+      const mm = lines[i].match(/^\s*-\s*(['"]?)([\w-]+)\1(?:\s*#.*)?$/);
       if (mm) gatePasses.push(mm[2]); else break; // block list is contiguous; first non-item ends it
     }
   }

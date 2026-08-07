@@ -1,0 +1,5 @@
+name: gate-passes-comment
+track: threejs
+gate_passes: [materials]   # trailing comment must NOT drop the field
+quality_contract:
+  global_min: 0.75   # inline comment here too

@@ -154,6 +154,17 @@ test('spec gate_passes:[materials] derives the materials-only ladder passed, no 
   assert.match(r.stdout, /clean: derivation coherent, cache matches\./);
 });
 
+test('gate_passes / global_min tolerate a trailing YAML # comment (must not silently drop the field)', () => {
+  // A user WILL write `gate_passes: [materials]  # note`. A `\s*$`-anchored loose-YAML read drops the
+  // field, so the asset climbs the full ladder and never derives green — a confusing silent failure.
+  // The read absorbs the comment; the subset stays materials-only.
+  const r = run('gate-passes-comment');
+  assert.equal(r.code, 0, `expected clean exit, got ${r.code}\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /materials\s+passed \(attempts 1, score 0\.78\)/);
+  assert.ok(!/blockout/.test(r.stdout), 'the subset must stay materials-only despite the trailing comment');
+  assert.match(r.stdout, /clean: derivation coherent, cache matches\./);
+});
+
 // ---- 5c. objective material-colour gate (colorTarget.deltaE00Max) --------------------------------
 
 test('colorTarget.deltaE00Max: a materials PASS with mechanical.color_delta_e00 under the max derives clean', () => {
