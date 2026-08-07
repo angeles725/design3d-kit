@@ -59,6 +59,11 @@ const problems = [];
 // read, a PASS review with a sub-minimum global sails through the checker silently (audit D7).
 // Retrofit designs without a spec fall back to each review's own `assumed_thresholds.global_min`.
 let specGlobalMin = null;
+// OPTIONAL `colorTarget.deltaE00Max` — the objective material-colour gate (research/threejs-block53).
+// gate-state does NOT measure pixels (it stays dependency-free): the material-color-probe.mjs harness
+// measures the render crop at review time and records `mechanical.color_delta_e00` (CIEDE2000 vs the
+// spec-declared target); here we only read the THRESHOLD and enforce the recorded number.
+let specDeltaE00Max = null;
 // OPTIONAL `gate_passes:` — an EXPLICIT declared pass-subset for a flat-catalog run (N independent
 // simple assets, each closing on one gate, e.g. `gate_passes: [materials]`). When present the
 // derivation ladder becomes exactly this subset in canonical order, and progress.yaml is only
@@ -70,6 +75,8 @@ if (fs.existsSync(specPath)) {
   const specText = fs.readFileSync(specPath, 'utf8');
   const m = specText.match(/^\s*global_min:\s*([\d.]+)\s*$/m);
   if (m) specGlobalMin = Number(m[1]);
+  const dm = specText.match(/^\s*deltaE00Max:\s*([\d.]+)\s*$/m);
+  if (dm) specDeltaE00Max = Number(dm[1]);
   // Loose YAML like global_min above: inline `gate_passes: [a, b]` or a block list of `- a` lines.
   const inline = specText.match(/^\s*gate_passes:\s*\[([^\]]*)\]\s*$/m);
   if (inline) {
@@ -162,6 +169,19 @@ for (const r of reviews) {
     problems.push(`${where}: PASS but no resolvable global_min (no spec quality_contract.global_min, no assumed_thresholds.global_min) — contract violation, GATES.md §Retrofit gate`);
   } else if (Number.isFinite(j.global_score) && j.global_score < gmin - SCORE_TOL) {
     problems.push(`${where}: PASS but global_score ${j.global_score} < global_min ${gmin}`);
+  }
+  // OBJECTIVE material-colour gate (research/threejs-block53): when the spec declares a
+  // colorTarget.deltaE00Max, the material-read judgement stops being a reviewer guess (measured
+  // reviewer variance: an identical stainless render scored 0.80 PASS vs 0.57 FAIL). The probe records
+  // mechanical.color_delta_e00 (CIEDE2000 vs the target); a colour-gated PASS (materials/surface) that
+  // declares the threshold but carries no measurement is a contract violation, like the global_min gap.
+  if (specDeltaE00Max !== null && (r.prefix === 'materials' || r.prefix === 'surface')) {
+    const de = j.mechanical?.color_delta_e00;
+    if (de === undefined || de === null) {
+      problems.push(`${where}: PASS but spec declares colorTarget deltaE00Max ${specDeltaE00Max} and the review carries no mechanical.color_delta_e00 (run material-color-probe.mjs) — contract violation`);
+    } else if (Number(de) > specDeltaE00Max) {
+      problems.push(`${where}: PASS but material colour ΔE00 ${de} > deltaE00Max ${specDeltaE00Max}`);
+    }
   }
 }
 

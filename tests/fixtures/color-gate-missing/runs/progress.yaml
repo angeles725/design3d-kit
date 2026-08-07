@@ -1,0 +1,7 @@
+design: color-gate-missing
+track: threejs
+passes:
+  materials:
+    status: passed
+    attempts: 1
+    score: 0.78

@@ -78,7 +78,13 @@ See `assets/designspec.template.yaml` — every field annotated. Required top-le
 `camera`, `lighting`. Optional: `important_features` (≤3); `gate_passes` (a declared gate
 pass-subset — a YAML list, inline `[materials]` or a block list — for a flat-catalog asset that
 closes on a subset of the ladder instead of the full 8-pass climb; `gate-state.mjs` derives exactly
-this subset in canonical order, PIPELINE.md §Triage flat-catalog + GATES.md §Verdict). Per-node:
+this subset in canonical order, PIPELINE.md §Triage flat-catalog + GATES.md §Verdict);
+`colorTarget` (OPTIONAL objective material-read anchor — `{srgb: [R,G,B], deltaE00Max: N, crop: "WxH+X+Y"}`)
+replacing the reviewer's subjective "reads as the right material" guess with a CIEDE2000 measurement:
+`material-color-probe.mjs` measures the render crop's mean sRGB, records `mechanical.color_delta_e00`,
+and `gate-state.mjs` enforces `dE00 <= deltaE00Max` on the materials/surface PASS (research/threejs-block53;
+the target `srgb` is the RENDERED value, not the albedo hex — it differs after ACES tonemapping; seed
+`deltaE00Max` ~6 for "reads as the right material", tighter for a hero). Per-node:
 `attachment` (required for appendages), `closure` (required for opposed/linked moving parts).
 Track-specific: `ui_controls`, `blockout_scale` (threejs — the voxel ratio, e.g. `"1 voxel = 0.1 m"`,
 drives the `// SCALE:` comment), `render` (blender: engine, samples).

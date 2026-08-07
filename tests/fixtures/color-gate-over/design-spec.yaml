@@ -1,0 +1,9 @@
+name: color-gate-over
+track: threejs
+gate_passes: [materials]
+quality_contract:
+  global_min: 0.75
+colorTarget:
+  srgb: [150, 150, 152]
+  deltaE00Max: 6.0
+  crop: 500x140+1300+780

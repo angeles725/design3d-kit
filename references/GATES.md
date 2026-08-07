@@ -237,6 +237,7 @@ PASS  iff  mechanical checks green (console clean AND within perf budget
        AND global_score >= quality_contract.global_min
        AND every critical feature score >= its threshold
        AND (if spec has important_features) their reviewed AVERAGE >= 0.65
+       AND (if spec declares colorTarget.deltaE00Max) mechanical.color_delta_e00 <= that max
 ```
 
 A critical feature below threshold FAILS the pass even with a high global score — critical
@@ -248,6 +249,17 @@ flat-catalog asset, DESIGNSPEC.md / PIPELINE.md §Triage flat-catalog), the deri
 that subset kept in canonical order: passes outside it are absent (not derived, not `locked`), and
 progress.yaml is only expected to cover the declared subset. An unknown pass name in `gate_passes`
 is a hard error, like an unknown ladder pass in the cache.
+
+**Objective material-colour gate.** The "does bare metal read as satin stainless / the right material"
+judgement is measured reviewer-variance-dominated — an identical stainless render (mean gray 91.4 vs
+91.6) scored 0.80 PASS by one blind reviewer and 0.57 FAIL by another (research/threejs-block53). When a
+spec declares `colorTarget.deltaE00Max`, that axis stops being a reviewer guess: `material-color-probe.mjs`
+(a repo tool, CIEDE2000 adapted from the img2threejs upstream) measures the render crop's mean sRGB, records
+`mechanical.color_delta_e00`, and `gate-state.mjs` enforces `dE00 <= deltaE00Max` on the materials/surface
+PASS — the reviewer still confirms IDENTITY (right shape/part), the SCRIPT judges the value. A colour-gated
+PASS that declares the threshold but records no `color_delta_e00` is a contract violation (fail loud, like a
+missing `global_min`), never a silent skip. The target is the RENDERED value (differs from the albedo hex
+after ACES tonemapping); it may be authored from a golden render's crop when no photo exists.
 
 **Budget-headroom feedback** (P6 only): if final utilization is <50% of `perf_budget` AND any
 layer <0.8, the P6 review must state whether spending headroom would raise the weak layer —

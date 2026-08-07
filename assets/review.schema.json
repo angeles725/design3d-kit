@@ -94,6 +94,7 @@
         "objects": { "type": ["integer", "null"] },
         "fps": { "type": ["integer", "null"] },
         "budget_pass": { "type": "boolean" },
+        "color_delta_e00": { "type": ["number", "null"], "description": "Objective material-read anchor: CIEDE2000 (dE00) distance of the render crop's mean sRGB to the spec-declared colorTarget, measured by material-color-probe.mjs. Required on a materials/surface PASS when the spec declares colorTarget.deltaE00Max; gate-state.mjs enforces dE00 <= that max. null/absent when the spec declares no colorTarget." },
         "tests": {
           "type": ["object", "null"],
           "description": "Invariant suite result when the design has one; null (with a note) when it has none — never fabricate",

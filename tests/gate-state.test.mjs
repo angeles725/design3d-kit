@@ -154,6 +154,34 @@ test('spec gate_passes:[materials] derives the materials-only ladder passed, no 
   assert.match(r.stdout, /clean: derivation coherent, cache matches\./);
 });
 
+// ---- 5c. objective material-colour gate (colorTarget.deltaE00Max) --------------------------------
+
+test('colorTarget.deltaE00Max: a materials PASS with mechanical.color_delta_e00 under the max derives clean', () => {
+  // research/threejs-block53: the material-read judgement is measured reviewer-variance-dominated
+  // (identical stainless render scored 0.80 PASS vs 0.57 FAIL). When the spec declares a
+  // colorTarget.deltaE00Max, material-color-probe.mjs records the CIEDE2000 distance in
+  // mechanical.color_delta_e00 and this deriver enforces it — an objective number, not a guess.
+  const r = run('color-gate-ok');
+  assert.equal(r.code, 0, `expected clean exit, got ${r.code}\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /materials\s+passed \(attempts 1, score 0\.78\)/);
+  assert.ok(!/PROBLEMS/.test(r.stdout), `an in-tolerance colour must raise no problem:\n${r.stdout}`);
+  assert.match(r.stdout, /clean: derivation coherent, cache matches\./);
+});
+
+test('colorTarget.deltaE00Max: a materials PASS with color_delta_e00 OVER the max is flagged as PASS-incoherence', () => {
+  const r = run('color-gate-over');
+  assert.equal(r.code, 1, `expected exit 1, got ${r.code}\n${r.stdout}`);
+  assert.match(r.stdout, /PASS but material colour ΔE00 8\.5 > deltaE00Max 6/);
+});
+
+test('colorTarget.deltaE00Max declared but the review carries no color_delta_e00 is a contract violation', () => {
+  // Mirrors the global_min contract-gap rule: a declared objective gate with no recorded measurement
+  // must fail loud, never silently skip — else the gate reads green on missing evidence.
+  const r = run('color-gate-missing');
+  assert.equal(r.code, 1, `expected exit 1, got ${r.code}\n${r.stdout}`);
+  assert.match(r.stdout, /declares colorTarget deltaE00Max 6.*no mechanical\.color_delta_e00.*contract violation/);
+});
+
 // ---- 6. blender-track ladder ---------------------------------------------------------------------
 
 test('blender track: an anim-rig review selects the blender ladder, not the threejs one', () => {
