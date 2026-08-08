@@ -390,3 +390,8 @@ scratchpad-routing + name protection are what bound the growth.)
 
 **Capture cleanup (on gate close)**: delete superseded attempt PNGs/consoles and raw
 pre-rename capture duplicates; keep the passing attempt's PNG + ALL review JSONs.
+Tool: `node assets/capture-gc.mjs <design-dir|catalog-root> [--apply]` (closes the SKILL v1.8
+DEFERRED `capture-gc` item). Dry-run by default; promotes the passing representative's review to the
+canonical `<slug>.review.json` and prunes only superseded/suffixed frames, never the passing
+attempt's PNG (the gate-state witness) nor any review JSON. Skips any asset lacking a canonical
+`<slug>.png`. First applied 2026-08-07 on nave-panccadia equipos (18 promoted / 8 pruned / 2.13 MB).
