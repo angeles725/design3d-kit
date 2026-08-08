@@ -20,15 +20,16 @@
 //   * anything in a subdirectory (history/, assets/): GC operates only on flat runs/ files here.
 //   * an asset with no canonical <slug>.png (unfinalized) — SKIPPED, never GC'd (fail-safe).
 //
-// NOT DONE HERE (staged proposal — needs the propose->promote protocol, SELF-IMPROVEMENT.md): the
-// <slug>.png <-> passing-attempt.png byte-twin dedup. Removing the attempt twin needs gate-state to
-// accept the canonical <slug>.{png,review.json} as a valid pass witness first; until that contract
-// change is promoted, this tool KEEPS the twin.
+// --dedup (opt-in): ALSO prune the passing rep's PNG byte-twin (the <pass>-attempt<N>.png that is a
+// byte-identical copy of <slug>.png). Safe because gate-state.mjs now accepts the promoted canonical
+// <slug>.{png,review.json} as a pass witness (2026-08-07 contract change + canonical-witness test).
+// Only fires when the rep review is promoted this run (promoteBase); the .review.json is always kept.
 //
 // Usage:
-//   node capture-gc.mjs <dir> [--apply]
+//   node capture-gc.mjs <dir> [--apply] [--dedup]
 //     <dir> either contains runs/ (single asset) OR is a catalog root whose <dir>/*/ contain runs/.
 //   Dry-run by default (reports "would prune"); --apply performs the deletes/promotes.
+//   --dedup additionally removes the canonical byte-twin (~1 extra PNG per asset).
 // Exit: 0 = swept (report printed) · 1 = zero asset dirs resolved (false-green guard) or apply I/O
 //   error · 2 = bad args. Emits a census: promoted N / pruned N files / bytes freed.
 
@@ -38,9 +39,11 @@ import crypto from 'node:crypto';
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
+const dedup = args.includes('--dedup'); // also prune the passing rep's PNG byte-twin (gate-state
+                                        // witnesses via the promoted canonical <slug>.{png,review.json})
 const root = args.find((a) => !a.startsWith('--'));
 if (!root || !fs.existsSync(root)) {
-  console.error('usage: node capture-gc.mjs <dir> [--apply]   (<dir> holds runs/, or is a catalog of such dirs)');
+  console.error('usage: node capture-gc.mjs <dir> [--apply] [--dedup]   (<dir> holds runs/, or is a catalog of such dirs)');
   process.exit(2);
 }
 
@@ -117,13 +120,18 @@ for (const A of dirs.sort()) {
     if (!fm) continue;                 // not a capture frame (reviews, yaml, md, log … all skipped)
     const gateBase = fm[1];            // <pass>[-l<L>]-attempt<N>
     const suffixed = !!fm[2];          // per-shot working frame (…-attempt<N>-<suffix>)
+    // --dedup: the passing rep's PNG/console is a byte-twin of the canonical <slug>.png, which
+    // (with the promoted <slug>.review.json) now witnesses the pass — so the twin is redundant.
+    // Guard: only when this run has a promoted canonical review for that rep (promoteBase), so the
+    // witness is guaranteed present; never touch its .review.json (RE_FRAME excludes review.json).
+    const isTwin = dedup && promoteBase !== null && gateBase === promoteBase && !suffixed;
     // Prune iff: a per-shot working frame (always scratch), OR an un-suffixed frame whose gate base
-    // is NOT a protected passing/owned rep (a superseded attempt).
-    const prunable = suffixed || !protectedBases.has(gateBase);
+    // is NOT a protected passing/owned rep (a superseded attempt), OR the canonical byte-twin (--dedup).
+    const prunable = suffixed || !protectedBases.has(gateBase) || isTwin;
     if (!prunable) continue;
     const p = path.join(runs, name);
     let sz = 0; try { sz = fs.statSync(p).size; } catch { /* ignore */ }
-    lines.push(`  ${slug}: prune ${name} (${(sz / 1024).toFixed(0)} KB)`);
+    lines.push(`  ${slug}: prune ${name} (${(sz / 1024).toFixed(0)} KB)${isTwin ? ' [dedup twin]' : ''}`);
     totPruned++; totBytes += sz;
     if (apply) { try { fs.unlinkSync(p); } catch (e) { ioError = true; lines.push(`    ! unlink failed: ${e.message}`); } }
   }

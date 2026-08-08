@@ -14,9 +14,14 @@ const LADDER_BLENDER = ['blockout', 'structural', 'materials', 'lighting-camera'
   'anim-rig', 'optimization-export', 'p6-final'];
 const IMPORTANT_MIN = 0.65, SCORE_TOL = 0.005;
 
-const dir = process.argv[2];
+const argv = process.argv.slice(2);
+// --write-cache: regenerate runs/progress.yaml from the derived state (only when the derivation is
+// semantically coherent). A retrofit for assets whose original run never wrote the cache — no tool
+// wrote progress.yaml before, it was hand-authored. Read-only without this flag (byte-identical).
+const writeCache = argv.includes('--write-cache');
+const dir = argv.find((a) => !a.startsWith('--'));
 if (!dir || !fs.existsSync(path.join(dir, 'runs'))) {
-  console.error('usage: node gate-state.mjs <design-dir>   (must contain runs/)');
+  console.error('usage: node gate-state.mjs <design-dir> [--write-cache]   (must contain runs/)');
   process.exit(2);
 }
 const runsDir = path.join(dir, 'runs');
@@ -51,6 +56,26 @@ const reviews = []; // {file, base, dir, prefix, lineage, attempt, json}
     });
   }
 })(runsDir);
+
+// ---- canonical <slug>.{png,review.json} as a pass witness (capture-gc byte-twin dedup) ---------
+// The flat catalog copies the passing representative to <slug>.png (a byte-identical twin of its
+// <pass>-attempt<N>.png). capture-gc --dedup prunes that attempt PNG twin (keeping ALL review JSONs)
+// once the review is promoted to <slug>.review.json. So a passing attempt review can lose its OWN
+// .png yet still be a real, gated pass — witnessed by the canonical copy. This fallback recognizes
+// exactly that, and ONLY for the single pass the canonical review declares (`pass`), so it can never
+// vouch for a different gate. ABSENT canonical review -> byte-identical to the prior basename-only rule.
+const slug = path.basename(path.resolve(dir));
+const canonPngPath = path.join(runsDir, `${slug}.png`);
+const canonReviewPath = path.join(runsDir, `${slug}.review.json`);
+let canonWitnessPass = null;
+if (fs.existsSync(canonReviewPath) && fs.existsSync(canonPngPath)) {
+  try {
+    const cj = JSON.parse(fs.readFileSync(canonReviewPath, 'utf8'));
+    if (cj.verdict === 'PASS' && cj.pass) canonWitnessPass = cj.pass === 'final' ? 'p6-final' : cj.pass;
+  } catch { /* a broken canonical review simply does not witness */ }
+}
+const hasPngWitness = (r) => fs.existsSync(path.join(r.dir, r.base + '.png'))
+  || (canonWitnessPass !== null && (r.prefix === canonWitnessPass || (canonWitnessPass === 'p6-final' && r.prefix === 'final')));
 
 const problems = [];
 
@@ -122,8 +147,7 @@ for (const pass of LADDER) {
   // count against the current retry budget and their failures do not block.
   const activeLineage = all.length ? Math.max(...all.map((r) => r.lineage)) : 1;
   const rs = all.filter((r) => r.lineage === activeLineage);
-  const passing = rs.filter((r) => r.json && r.json.verdict === 'PASS' &&
-    fs.existsSync(path.join(r.dir, r.base + '.png')));
+  const passing = rs.filter((r) => r.json && r.json.verdict === 'PASS' && hasPngWitness(r));
   if (passing.length === 0) {
     derived[pass] = { status: rs.length ? `failed(${rs.length})` : 'locked', lineage: activeLineage };
     blocked = true;
@@ -161,8 +185,8 @@ for (const r of reviews) {
   if (!j.mechanical || j.mechanical.console_clean !== true || j.mechanical.budget_pass !== true) {
     problems.push(`${where}: PASS but mechanical not green (console_clean/budget_pass)`);
   }
-  if (!fs.existsSync(path.join(r.dir, r.base + '.png'))) {
-    problems.push(`${where}: PASS but screenshot ${r.base}.png missing`);
+  if (!hasPngWitness(r)) {
+    problems.push(`${where}: PASS but screenshot ${r.base}.png missing (and no canonical ${slug}.png witness)`);
   }
   const gmin = specGlobalMin ?? j.assumed_thresholds?.global_min ?? null;
   if (gmin === null) {
@@ -188,8 +212,31 @@ for (const r of reviews) {
   }
 }
 
-// ---- (b) loose-parse progress.yaml and diff vs derivation ------------------------------------
+// ---- (a2) OPTIONAL --write-cache: emit the derived ladder as progress.yaml -------------------
+// Runs BEFORE the drift diff, so the freshly written cache is then verified by (b) and reports clean.
+// Gated on ZERO problems so far (all semantic/coherence checks from (a)+(c)) — never cache a broken
+// derivation. Refusing prints the problems and exits 1 via the normal report path below.
 const progPath = path.join(runsDir, 'progress.yaml');
+if (writeCache) {
+  if (problems.length > 0) {
+    console.error(`gate-state --write-cache: refusing to write progress.yaml — ${problems.length} unresolved derivation problem(s); fix them first.`);
+  } else if (reviews.length === 0) {
+    console.error('gate-state --write-cache: nothing to cache (no gate evidence yet).');
+  } else {
+    const track = BASE_LADDER === LADDER_BLENDER ? 'blender' : 'threejs';
+    let y = `design: ${slug}\ntrack: ${track}\npasses:\n`;
+    for (const p of LADDER) {
+      const d = derived[p];
+      if (d.status === 'locked') continue; // not started — absent-not-locked, matches the reader
+      y += `  ${p}:\n    status: ${d.status}\n`;
+      if (d.status === 'passed') y += `    attempts: ${d.attempts}\n    score: ${d.score}\n`;
+    }
+    fs.writeFileSync(progPath, y);
+    console.log(`gate-state --write-cache: wrote ${path.relative(dir, progPath)}`);
+  }
+}
+
+// ---- (b) loose-parse progress.yaml and diff vs derivation ------------------------------------
 const cache = {}; // pass -> {status, attempts, score}
 if (fs.existsSync(progPath)) {
   let section = '', pass = '';

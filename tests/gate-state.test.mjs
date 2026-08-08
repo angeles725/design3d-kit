@@ -83,6 +83,21 @@ test('multi-shot with the canonical representative copy derives clean', () => {
   assert.match(r.stdout, /clean: derivation coherent/);
 });
 
+// ---- 3b. canonical <slug>.{png,review.json} witnesses a deduped pass ---------------------------
+
+test('canonical witness: a PASS whose attempt PNG was pruned still derives passed via <slug>.png/.review.json', () => {
+  // capture-gc --dedup drops the passing attempt's PNG byte-twin (identical md5 to <slug>.png) once
+  // the review is promoted to <slug>.review.json, keeping ALL review JSONs. The attempt review then
+  // has no sibling .png — but the canonical copy witnesses its OWN declared pass (materials here), so
+  // the gate still derives passed and no false "screenshot missing" fires. (gate-state.mjs
+  // hasPngWitness; LEARNINGS 2026-08-07 byte-twin dedup.)
+  const r = run('canonical-witness');
+  assert.equal(r.code, 0, `expected clean exit, got ${r.code}\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /materials\s+passed \(attempts 1, score 0\.78\)/);
+  assert.ok(!/screenshot .*missing/.test(r.stdout), `no false screenshot-missing on a deduped pass:\n${r.stdout}`);
+  assert.match(r.stdout, /clean: derivation coherent/);
+});
+
 // ---- 4. history/ skipping -----------------------------------------------------------------------
 
 test('history/ artifacts contribute nothing to live state', () => {

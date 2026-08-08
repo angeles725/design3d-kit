@@ -390,8 +390,13 @@ scratchpad-routing + name protection are what bound the growth.)
 
 **Capture cleanup (on gate close)**: delete superseded attempt PNGs/consoles and raw
 pre-rename capture duplicates; keep the passing attempt's PNG + ALL review JSONs.
-Tool: `node assets/capture-gc.mjs <design-dir|catalog-root> [--apply]` (closes the SKILL v1.8
-DEFERRED `capture-gc` item). Dry-run by default; promotes the passing representative's review to the
-canonical `<slug>.review.json` and prunes only superseded/suffixed frames, never the passing
-attempt's PNG (the gate-state witness) nor any review JSON. Skips any asset lacking a canonical
-`<slug>.png`. First applied 2026-08-07 on nave-panccadia equipos (18 promoted / 8 pruned / 2.13 MB).
+Tool: `node assets/capture-gc.mjs <design-dir|catalog-root> [--apply] [--dedup]` (closes the SKILL
+v1.8 DEFERRED `capture-gc` item). Dry-run by default; promotes the passing representative's review to
+the canonical `<slug>.review.json` and prunes superseded/suffixed frames, never a review JSON, and
+skips any asset lacking a canonical `<slug>.png`. `--dedup` ALSO prunes the passing attempt's PNG
+byte-twin (identical md5 to `<slug>.png`): safe because `gate-state.mjs` now accepts the promoted
+canonical `<slug>.{png,review.json}` as a pass witness for its declared pass (`hasPngWitness`, with a
+`canonical-witness` characterization test) — so the twin is redundant. Cache retrofit: after a
+`--dedup` sweep, `node assets/gate-state.mjs <design-dir> --write-cache` regenerates a missing
+`runs/progress.yaml` from the derived ladder (gated on a coherent derivation). First applied
+2026-08-07 on nave-panccadia equipos (18 promoted, then --dedup 18 twins / 7.39 MB, 18/18 gate-clean).

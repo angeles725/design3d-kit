@@ -1,0 +1,5 @@
+name: canonical-witness
+track: threejs
+gate_passes: [materials]
+quality_contract:
+  global_min: 0.75
