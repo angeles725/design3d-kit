@@ -276,12 +276,16 @@ export async function checkFraming(object3D, camera, opts = {}) {
       && cssTop < hudRect.bottom && cssBottom > hudRect.top;
   }
 
+  // ok REQUIRES fullyVisible: a subject cropped at a frame edge (any corner |ndc| > 1) is a named
+  // recurrent failure ("gate blind to framing — a cropped subject passes exit 0"), so it must fail
+  // here, not merely be reported. cropped is surfaced for the modeler.
   const verdict = {
-    ok: frustumVisible && !proj.anyBehind && m.wellFramed && !overlapsHUD,
+    ok: frustumVisible && !proj.anyBehind && m.fullyVisible && m.wellFramed && !overlapsHUD,
     frustumVisible: true,
     occupancy: m.occupancy,
     centered: m.centered,
     fullyVisible: m.fullyVisible,
+    cropped: !m.fullyVisible,
     wellFramed: m.wellFramed,
     overlapsHUD,
     ndcMin: proj.ndcMin,
