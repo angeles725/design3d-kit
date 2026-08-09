@@ -100,6 +100,25 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.25));
 scene.add(new THREE.HemisphereLight(0xeaf0ff, 0x2a3038, 0.7));   // lifts upward-facing stainless
 // frontal fill (see brushed-stainless-recipe): lights the VERTICAL faces the top rig misses
 // ... ground plane, then the equipment build ...
+
+// SUBJECT = your equipment root (the Object3D the framing gate should frame). Designate it here,
+// after the build. Install the framing hook (see qa-framing-hook) once, at boot, and flip the
+// ready flag LAST — never a status-text write (app-ready-flag).
+const SUBJECT = equipment;   // <-- the equipment root Group you just built
+window.__qaFraming = () => {
+  camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+  const mvp = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  const b = new THREE.Box3().setFromObject(SUBJECT, true);
+  const mn = b.min, mx = b.max;
+  const corners = [
+    [mn.x,mn.y,mn.z],[mx.x,mn.y,mn.z],[mn.x,mx.y,mn.z],[mx.x,mx.y,mn.z],
+    [mn.x,mn.y,mx.z],[mx.x,mn.y,mx.z],[mn.x,mx.y,mx.z],[mx.x,mx.y,mx.z],
+  ];
+  const hudEl = document.querySelector('#hud');
+  const hud = hudEl ? (r => ({left:r.left,right:r.right,top:r.top,bottom:r.bottom}))(hudEl.getBoundingClientRect()) : null;
+  return { mvpElements: Array.from(mvp.elements), corners, W: innerWidth, H: innerHeight, hud };
+};
+document.documentElement.dataset.appReady = 'true';   // ready LAST
 </script>
 </body>
 </html>
@@ -110,6 +129,9 @@ scene.add(new THREE.HemisphereLight(0xeaf0ff, 0x2a3038, 0.7));   // lifts upward
 1. Keep the favicon shim + `data-app-ready` flag (the P7 GLB export waits on the flag).
 2. Set the HUD `PASS:` label per pass (dynamic-label rule) — never ship it stale.
 3. Pair the IBL/frontal-fill values with `brushed-stainless-recipe` when the asset is bare metal.
+4. Designate the equipment root as `SUBJECT` and install `window.__qaFraming` (see `qa-framing-hook`)
+   so `research/tools/framing-probe.mjs` can gate framing — a subject offscreen, cropped, behind the
+   near plane, or hidden by the HUD is a named recurrent miss the framing gate exists to catch.
 
 **Evidence**: 18/18 nave-panccadia equipment assets materials PASS 0.76–0.80.
 `disenos/nave-panccadia/equipos/mesa-trabajo/runs/materials-attempt2.review.json`.
