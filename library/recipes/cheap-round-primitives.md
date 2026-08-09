@@ -5,13 +5,13 @@ by-on-screen-size decision rule (from research block **B126**), so nothing is bo
 over-tessellated.
 
 **Why**: three.js primitive defaults are tuned for close-up hero shots, not equipment fleets. A
-default `SphereGeometry(r, 32, 16)` is 512 tris where 128 reads identically at fleet scale; a default
+default `SphereGeometry(r, 32, 16)` is 960 tris where 224 reads identically at fleet scale; a default
 `CylinderGeometry` radialSegments is 32 where 12–16 is indistinguishable. Multiply that waste across a
 plant of tanks/vessels/rollers and the frame budget evaporates on curvature nobody can see.
 
 **Segment sweet-spots (r160)**
 
-- `SphereGeometry` **16×8** (~128 tris) — the default 32×16 (=512) is wasteful at any normal size.
+- `SphereGeometry` **16×8** (224 tris; the count is `2·W·(H−1)`) — the default 32×16 (=960) is wasteful at any normal size.
 - `CylinderGeometry` radialSegments **12–16**, not the default 32.
 - `CapsuleGeometry` is **r160 core** — use it directly for rounded bars / handles / pill bodies
   instead of a cylinder + two hemispheres you assemble by hand.
@@ -19,8 +19,9 @@ plant of tanks/vessels/rollers and the frame budget evaporates on curvature nobo
 
 **Fake curvature is cheaper than geometry**
 
-- A baked round-edge **normalMap on a 12-tri box** buys the lit look of a rounded edge for ~95% less
-  than rounding the geometry. Set `normalMap.colorSpace = THREE.NoColorSpace` (a normal map is data,
+- A baked round-edge **normalMap on a 12-tri box** buys the lit look of a rounded edge for ~89% fewer
+  tris than a `RoundedBoxGeometry(segments=1)` (12 vs 108), ~96% vs the default (segments=2, 300).
+  Set `normalMap.colorSpace = THREE.NoColorSpace` (a normal map is data,
   not color — sRGB-decoding it corrupts the normals).
 - `MeshMatcapMaterial` is the SwiftShader-safe baked-metal shortcut — the lighting is painted into the
   matcap texture, so no runtime lights/env are consulted (cheap and headless-stable).
