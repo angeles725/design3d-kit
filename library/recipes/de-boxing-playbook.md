@@ -27,7 +27,10 @@ a dished TOP head `a=0..π/2: x=R·cos a, y=(H−hHead)+hHead·sin a`. Dedupe th
 the ONE returned texture to BOTH `material.roughnessMap` AND `material.metalnessMap`, and **set
 `material.roughness = 1` and `material.metalness = 1`** — three MULTIPLIES map × scalar, so a scalar of
 `0.28` over a `0.28` map reads `0.078` (mirror-glossy, wrong). Keep the scalars at **1** and let the map
-drive. `material.envMapIntensity ≈ 1.4` — NEVER `scene.environmentIntensity` (inert in r160; see
+drive. **Satin, not mirror:** for painted/industrial equipment keep `roughnessBase ≈ 0.45–0.55` and
+`material.envMapIntensity ≈ 1.0` — a low roughness (0.3) + high envMapIntensity (1.4) turns every part
+into a chrome MIRROR (caught by user feedback on the compressor de-box). Enamel panels:
+`roughness ≈ 0.55–0.62`, `envMapIntensity ≈ 0.7–0.85`. NEVER `scene.environmentIntensity` (inert in r160; see
 `brushed-stainless-recipe`).
 
 **Real dimensions:** read them from the voxel original (voxel scale × voxel counts) and keep the SAME
