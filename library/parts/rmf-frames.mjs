@@ -6,8 +6,14 @@
 //       A moving orthonormal frame {r, s, t} per sample whose reference axis r does NOT rotate about
 //       the tangent t — the frame you want to extrude a tube/hose cross-section ring along without
 //       introducing spurious twist.
-// deps: NONE. Imports nothing (a tiny inline vec helper set below), so it is unit-testable in plain
-//       Node with no three.js resolution needed. Feed it {x,y,z} plain objects; get {x,y,z} back.
+// deps: NONE for the pure core. Imports nothing (a tiny inline vec helper set below), so it is
+//       unit-testable in plain Node with no three.js resolution needed. Feed it {x,y,z} plain
+//       objects; get {x,y,z} back.
+// ALSO IN THIS FILE: a PURE tube-geometry core (`tubeGeometryFromFrames`, imports nothing) that
+//       rings the RMF frames into a circular tube, plus an in-page swept-tube builder (`makeSweptTube`,
+//       ASYNC — loads three via a dynamic `import('three')` INSIDE the function, so the pure core above
+//       stays Node-importable/testable). The builder may top-level import the pure `adaptive-segments`
+//       module (it imports nothing); it must NEVER add a top-level `import * as THREE`.
 //
 // WHY RMF BEATS FRENET. The Frenet frame builds its normal from the curve's second derivative
 // (the principal normal), so at an inflection point where curvature κ→0 the normal is undefined and
@@ -23,6 +29,10 @@
 // about the tangent — the rotation-minimizing transport, computed with only dot/sub/scale (no sqrt in
 // the transport itself; one normalize per step for numerical hygiene). This is O(n), stable, and
 // second-order accurate — the method of choice over the older projection/Bishop integration.
+
+// Pure adaptive-segment helpers (that module imports nothing, so a top-level import here is safe and
+// does NOT pull three.js into this file's import graph). Used only by the in-page builder below.
+import { radialSegmentsFor, lengthSegmentsFor } from './adaptive-segments.mjs';
 
 // -------- tiny inline vec helpers (operate on {x,y,z}; import nothing) -----------------------------
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
@@ -88,4 +98,89 @@ export function rmfFrames(points, tangents, r0) {
   }
 
   return frames;
+}
+
+// -------- PURE tube-geometry core (imports nothing; Node-testable) ---------------------------------
+/**
+ * Turn RMF frames + their centerline samples into a circular tube's flat position/index arrays.
+ * For each sample i a ring of `radialSegments` verts is placed at `radius` in that frame's (r,s)
+ * plane; consecutive rings are joined into quads (two triangles each). OPEN tube — no end caps.
+ * @param {{x:number,y:number,z:number}[]} points        n centerline samples.
+ * @param {{r:{x,y,z}, s:{x,y,z}, t:{x,y,z}}[]} frames    one frame per sample (same length as points).
+ * @param {number} radius                                 tube radius, caller units.
+ * @param {number} radialSegments                         verts per ring around the tube.
+ * @returns {{positions:number[], indices:number[]}}  positions flat [x,y,z, ...], indices flat tri ids.
+ */
+export function tubeGeometryFromFrames(points, frames, radius, radialSegments) {
+  const positions = [];
+  // One ring of `radialSegments` verts per sample, in the frame's (r,s) plane at `radius`.
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const { r, s } = frames[i];
+    for (let k = 0; k < radialSegments; k++) {
+      const angle = (2 * Math.PI * k) / radialSegments;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      positions.push(
+        p.x + radius * (ca * r.x + sa * s.x),
+        p.y + radius * (ca * r.y + sa * s.y),
+        p.z + radius * (ca * r.z + sa * s.z),
+      );
+    }
+  }
+
+  // Join ring i to ring i+1: quad over columns k and (k+1)%radialSegments → two triangles.
+  const indices = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    for (let k = 0; k < radialSegments; k++) {
+      const kNext = (k + 1) % radialSegments;
+      const a = i * radialSegments + k;
+      const b = i * radialSegments + kNext;
+      const c = (i + 1) * radialSegments + k;
+      const d = (i + 1) * radialSegments + kNext;
+      indices.push(a, c, d);
+      indices.push(a, d, b);
+    }
+  }
+
+  return { positions, indices };
+}
+
+// -------- in-page swept-tube builder (dynamic three import; async) ---------------------------------
+/**
+ * Build a SMOOTH swept tube along a curve as a single Mesh, using rotation-minimizing frames (no
+ * spiral twist where the path straightens) + adaptive segment counts. This is for curved hoses/pipes
+ * that the discrete cylinder+elbow `pipe-run` builder cannot render smoothly — the RMF sweep keeps the
+ * cross-section coherent through inflections instead of pinching or flipping.
+ *
+ * ASYNC: loads three via a dynamic `import('three')` INSIDE the function so this file's pure core
+ * (`rmfFrames`, `tubeGeometryFromFrames`) stays Node-importable/testable. The caller injects the
+ * material and parents the returned Mesh.
+ * @param {(THREE.Vector3|number[])[]} curvePoints  control points (Vector3 or [x,y,z]).
+ * @param {object} [opts]
+ * @param {number} [opts.radius=0.05]           tube radius, caller units.
+ * @param {number} [opts.targetEdgeLength]       when set, radial + tubular counts derive from it.
+ * @param {number} [opts.radialSegments]         explicit ring count override.
+ * @param {number} [opts.tubularSegments]        explicit lengthwise sample count override.
+ * @param {boolean} [opts.closed=false]          close the CatmullRom curve into a loop.
+ * @param {THREE.Material} material              injected material.
+ * @returns {Promise<THREE.Mesh>}  a shadow-casting Mesh the caller parents.
+ */
+export async function makeSweptTube(curvePoints, opts = {}, material) {
+  const THREE = await import('three');
+  const { radius = 0.05, targetEdgeLength, radialSegments, tubularSegments, closed = false } = opts;
+  const curve = new THREE.CatmullRomCurve3(curvePoints.map(p => p.isVector3 ? p : new THREE.Vector3(p[0], p[1], p[2])), closed, 'centripetal');
+  const nT = tubularSegments ?? (lengthSegmentsFor(curve.getLength(), targetEdgeLength) ?? 64);
+  const pts = [], tans = [];
+  for (let i = 0; i <= nT; i++) { const u = i / nT; pts.push(curve.getPointAt(u)); tans.push(curve.getTangentAt(u).normalize()); }
+  // seed normal perpendicular to the first tangent (use the world axis least aligned with it)
+  const t0 = tans[0]; const ax = Math.abs(t0.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const r0 = new THREE.Vector3().crossVectors(t0, ax).normalize();
+  const frames = rmfFrames(pts.map(v => ({ x: v.x, y: v.y, z: v.z })), tans.map(v => ({ x: v.x, y: v.y, z: v.z })), { x: r0.x, y: r0.y, z: r0.z });
+  const radSeg = radialSegments ?? (radialSegmentsFor(radius, targetEdgeLength) ?? 12);
+  const { positions, indices } = tubeGeometryFromFrames(pts.map(v => ({ x: v.x, y: v.y, z: v.z })), frames, radius, radSeg);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setIndex(indices); g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, material); mesh.castShadow = true;
+  return mesh;
 }
