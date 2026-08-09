@@ -121,6 +121,14 @@ ok(miOut.insideOut === false, 'meshIntegrity outward tetra: not inside-out');
 const miIn = meshIntegrity(tetraPos, tetraIn);
 ok(miIn.closed === true && miIn.insideOut === true, 'meshIntegrity reversed tetra: inside-out true');
 
+// ---- review-gap coverage: degenerate IoU union + non-manifold edges --------------------------
+const pointBox = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
+ok(aabbIoU(pointBox, pointBox) === 0, 'aabbIoU degenerate (union<=0 branch) returns 0');
+// three triangles all sharing edge (0,1): that edge has valence 3 (non-manifold), the rest are open.
+const nonManifold = edgeManifold([0, 1, 2, 0, 1, 3, 0, 1, 4]);
+ok(nonManifold.nonManifoldEdges === 1 && nonManifold.openEdges === 6, 'edgeManifold: 1 non-manifold edge + 6 open');
+ok(nonManifold.closed === false, 'edgeManifold non-manifold fan: not closed');
+
 // ---- report ----------------------------------------------------------------------------------
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail > 0 ? 1 : 0);

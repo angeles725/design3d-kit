@@ -47,10 +47,15 @@ export function createPipeRun({
   // Adaptive tessellation: with targetEdgeLength, counts scale with radius so a thin pipe and a fat
   // header stop paying the same tri budget. An explicit *Segments override always wins; with neither,
   // counts fall back to the historic fixed 12/12/8 — byte-identical to the pre-adaptive builder.
-  const radSeg = radialSegments ?? radialSegmentsFor(radius, targetEdgeLength) ?? 12;
+  // An explicit segment override wins only when it is a valid count (>= the geometry minimum);
+  // an invalid 0/negative/NaN override falls back to adaptive-or-default instead of building
+  // degenerate geometry. With no override and no targetEdgeLength the counts are the historic 12/12/8.
+  const pick = (v, adaptive, fallback, min) =>
+    (Number.isInteger(v) && v >= min) ? v : (adaptive ?? fallback);
   const elbowSeg = sphereSegmentsFor(elbowRadius, targetEdgeLength);
-  const elbowW = elbowWidthSegments ?? elbowSeg?.width ?? 12;
-  const elbowH = elbowHeightSegments ?? elbowSeg?.height ?? 8;
+  const radSeg = pick(radialSegments, radialSegmentsFor(radius, targetEdgeLength), 12, 3);
+  const elbowW = pick(elbowWidthSegments, elbowSeg?.width, 12, 3);
+  const elbowH = pick(elbowHeightSegments, elbowSeg?.height, 8, 2);
 
   const group = new THREE.Group();
   const pts = points.map(p => (p && p.isVector3) ? p.clone() : new THREE.Vector3(p[0], p[1], p[2]));
