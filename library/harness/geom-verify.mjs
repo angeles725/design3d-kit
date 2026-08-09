@@ -56,24 +56,32 @@ export function projectCornersNDC(mvpElements, corners) {
 }
 
 /**
- * Composition metrics from an NDC bounding box.
+ * Composition metrics from an NDC bounding box. `wellFramed` accepts a subject that fills a good
+ * AREA (occupancy in [occMin, occMax]) OR that fills a large fraction of ONE screen axis
+ * (`maxAxisFill >= spanMin`) — the latter admits legitimately WIDE/thin subjects (an equipment row,
+ * a long pipe run) that can never reach `occMin` AREA in a non-matching-aspect frame, WITHOUT
+ * admitting a genuinely tiny subject (low on BOTH). A too-big subject (occupancy > occMax) still fails.
  * @param {{x:number,y:number}} ndcMin
  * @param {{x:number,y:number}} ndcMax
- * @param {{occMin?:number, occMax?:number, centerTol?:number}} [opts]
- * @returns {{occupancy:number, cx:number, cy:number, centered:boolean, fullyVisible:boolean, wellFramed:boolean}}
+ * @param {{occMin?:number, occMax?:number, centerTol?:number, spanMin?:number}} [opts]
+ * @returns {{occupancy:number, maxAxisFill:number, cx:number, cy:number, centered:boolean, fullyVisible:boolean, wellFramed:boolean}}
  */
 export function framingMetrics(ndcMin, ndcMax, opts = {}) {
-  const { occMin = 0.25, occMax = 0.85, centerTol = 0.3 } = opts;
+  const { occMin = 0.25, occMax = 0.85, centerTol = 0.3, spanMin = 0.6 } = opts;
   const minX = ndcMin.x, minY = ndcMin.y, maxX = ndcMax.x, maxY = ndcMax.y;
   // Fraction of each NDC axis [-1,1] (width 2) covered by the clamped box, product = area fraction.
-  const wFrac = (Math.min(maxX, 1) - Math.max(minX, -1)) / 2;
-  const hFrac = (Math.min(maxY, 1) - Math.max(minY, -1)) / 2;
-  const occupancy = Math.max(0, wFrac) * Math.max(0, hFrac);
+  const wFrac = Math.max(0, (Math.min(maxX, 1) - Math.max(minX, -1)) / 2);
+  const hFrac = Math.max(0, (Math.min(maxY, 1) - Math.max(minY, -1)) / 2);
+  const occupancy = wFrac * hFrac;
+  const maxAxisFill = Math.max(wFrac, hFrac);            // fill of the dominant (more-filled) screen axis
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   const centered = Math.abs(cx) < centerTol && Math.abs(cy) < centerTol;
   const fullyVisible = minX >= -1 && maxX <= 1 && minY >= -1 && maxY <= 1;
-  const wellFramed = occupancy >= occMin && occupancy <= occMax && centered;
-  return { occupancy, cx, cy, centered, fullyVisible, wellFramed };
+  // Big enough by AREA, OR by filling one axis (wide/thin subjects). A tiny subject is low on both,
+  // so it still fails; a too-big subject (occupancy > occMax) still fails; off-center still fails.
+  const bigEnough = occupancy >= occMin || maxAxisFill >= spanMin;
+  const wellFramed = bigEnough && occupancy <= occMax && centered;
+  return { occupancy, maxAxisFill, cx, cy, centered, fullyVisible, wellFramed };
 }
 
 /**
@@ -228,13 +236,14 @@ export function assertPositive(value, name, margin = 1e-3) {
  * @param {number} [opts.occMin]
  * @param {number} [opts.occMax]
  * @param {number} [opts.centerTol]
+ * @param {number} [opts.spanMin]  one-axis fill that admits a wide/thin subject (default 0.6).
  * @param {boolean} [opts.emit=true]  console.error on failure.
  * @param {string} [opts.label='subject']
  * @returns {Promise<object>} verdict.
  */
 export async function checkFraming(object3D, camera, opts = {}) {
   const THREE = await import('three');
-  const { hudRect = null, occMin, occMax, centerTol, emit = true, label = 'subject' } = opts;
+  const { hudRect = null, occMin, occMax, centerTol, spanMin, emit = true, label = 'subject' } = opts;
 
   camera.updateMatrixWorld();
   camera.updateProjectionMatrix();
@@ -262,7 +271,7 @@ export async function checkFraming(object3D, camera, opts = {}) {
     return verdict;
   }
 
-  const m = framingMetrics(proj.ndcMin, proj.ndcMax, { occMin, occMax, centerTol });
+  const m = framingMetrics(proj.ndcMin, proj.ndcMax, { occMin, occMax, centerTol, spanMin });
 
   let overlapsHUD = false;
   if (hudRect && opts.width && opts.height) {
@@ -283,6 +292,7 @@ export async function checkFraming(object3D, camera, opts = {}) {
     ok: frustumVisible && !proj.anyBehind && m.fullyVisible && m.wellFramed && !overlapsHUD,
     frustumVisible: true,
     occupancy: m.occupancy,
+    maxAxisFill: m.maxAxisFill,
     centered: m.centered,
     fullyVisible: m.fullyVisible,
     cropped: !m.fullyVisible,

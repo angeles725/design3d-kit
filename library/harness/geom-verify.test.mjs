@@ -66,6 +66,15 @@ ok(fmTiny.wellFramed === false, 'framingMetrics tiny box: wellFramed false');
 const fmOff = framingMetrics({ x: 1.2, y: -0.4 }, { x: 1.6, y: 0.4 });
 ok(fmOff.fullyVisible === false, 'framingMetrics off-frame box: fullyVisible false');
 
+// Wide/thin subject (an equipment row / long pipe run): fills the WIDTH but has low AREA. It fills
+// one axis (maxAxisFill >= spanMin 0.6) so it reads wellFramed despite occupancy < occMin — the
+// wide-subject fix. A TINY box (low on BOTH axes) must STILL fail, i.e. the criterion did not weaken.
+const fmWide = framingMetrics({ x: -0.75, y: -0.12 }, { x: 0.75, y: 0.12 });
+ok(fmWide.occupancy < 0.25, 'framingMetrics wide row: occupancy below occMin (thin strip)');
+ok(fmWide.maxAxisFill >= 0.6, 'framingMetrics wide row: fills one axis (maxAxisFill >= spanMin)');
+ok(fmWide.wellFramed === true, 'framingMetrics wide row: wellFramed via the one-axis span criterion');
+ok(fmTiny.maxAxisFill < 0.6 && fmTiny.wellFramed === false, 'framingMetrics tiny box still fails (low on BOTH axes)');
+
 // ---- aabbIoU ---------------------------------------------------------------------------------
 const unit = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 ok(approx(aabbIoU(unit, unit), 1), 'aabbIoU identical ~= 1');
