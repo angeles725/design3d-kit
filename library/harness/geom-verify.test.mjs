@@ -12,6 +12,7 @@ import {
   signedVolume,
   meshIntegrity,
   assertPositive,
+  gap3D,
 } from './geom-verify.mjs';
 
 let pass = 0, fail = 0;
@@ -137,6 +138,64 @@ ok(aabbIoU(pointBox, pointBox) === 0, 'aabbIoU degenerate (union<=0 branch) retu
 const nonManifold = edgeManifold([0, 1, 2, 0, 1, 3, 0, 1, 4]);
 ok(nonManifold.nonManifoldEdges === 1 && nonManifold.openEdges === 6, 'edgeManifold: 1 non-manifold edge + 6 open');
 ok(nonManifold.closed === false, 'edgeManifold non-manifold fan: not closed');
+
+// ---- gap3D (NEW) -----------------------------------------------------------------------------
+// 3D separation between two AABBs: per-axis clamped separation, Euclidean gap, touching/overlapping.
+// z-only separation of 0.11 while x,y overlap (the filtrado case).
+{
+  // a occupies z in [-1,0], b occupies z in [0.11,1]; x,y fully overlap -> sep only on z.
+  const a = { min: { x: 0, y: 0, z: -1 }, max: { x: 1, y: 1, z: 0 } };
+  const b = { min: { x: 0, y: 0, z: 0.11 }, max: { x: 1, y: 1, z: 1 } };
+  const r = gap3D(a, b);
+  ok(approx(r.sep.x, 0) && approx(r.sep.y, 0), 'gap3D filtrado: x,y overlap -> sep 0');
+  ok(approx(r.sep.z, 0.11), 'gap3D filtrado: sep.z ~= 0.11');
+  ok(approx(r.gap, 0.11), 'gap3D filtrado: gap ~= 0.11');
+  ok(r.touching === false, 'gap3D filtrado: gap > eps -> not touching');
+  ok(r.overlapping === false, 'gap3D filtrado: separated on z -> not overlapping');
+}
+
+// DIAGONAL separation (0.3 on x AND 0.4 on y) gives gap === 0.5 exactly (3-4-5).
+{
+  // sep values come from subtractions against 0 so they are exactly 0.3 and 0.4 (no float drift).
+  const a = { min: { x: -1, y: -1, z: 0 }, max: { x: 0, y: 0, z: 1 } };
+  const b = { min: { x: 0.3, y: 0.4, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  const r = gap3D(a, b);
+  ok(r.sep.x === 0.3, 'gap3D diagonal: sep.x exactly 0.3');
+  ok(r.sep.y === 0.4, 'gap3D diagonal: sep.y exactly 0.4');
+  ok(r.sep.z === 0, 'gap3D diagonal: z overlaps -> sep 0');
+  ok(r.gap === 0.5, 'gap3D diagonal: gap === 0.5 exactly — NOT axis-limited (combines x AND y)');
+  ok(r.overlapping === false, 'gap3D diagonal: diagonally separated -> not overlapping');
+}
+
+// Fully overlapping boxes -> gap 0 and overlapping true.
+{
+  const a = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  const b = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  const r = gap3D(a, b);
+  ok(r.gap === 0, 'gap3D full-overlap: gap 0');
+  ok(r.overlapping === true, 'gap3D full-overlap: interior overlap on all axes -> overlapping true');
+  ok(r.touching === true, 'gap3D full-overlap: gap 0 <= eps -> touching true');
+}
+
+// Exactly face-touching -> gap 0, touching true, overlapping false.
+{
+  // Share the x=1 face; y,z overlap. Separation is exactly 0 on x but NOT an interior overlap.
+  const a = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  const b = { min: { x: 1, y: 0, z: 0 }, max: { x: 2, y: 1, z: 1 } };
+  const r = gap3D(a, b);
+  ok(r.gap === 0, 'gap3D face-touch: gap 0');
+  ok(r.touching === true, 'gap3D face-touch: gap 0 <= eps -> touching');
+  ok(r.overlapping === false, 'gap3D face-touch: contact only (no interior overlap on x) -> overlapping false');
+}
+
+// eps boundary — a gap just under eps touches; just over does not.
+{
+  const a = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } };
+  const under = { min: { x: 0, y: 0, z: 5e-5 }, max: { x: 1, y: 1, z: 1 } }; // sep.z 5e-5 < 1e-4
+  const over = { min: { x: 0, y: 0, z: 2e-4 }, max: { x: 1, y: 1, z: 1 } };  // sep.z 2e-4 > 1e-4
+  ok(gap3D(a, under).touching === true, 'gap3D eps boundary: gap < eps -> touching');
+  ok(gap3D(a, over).touching === false, 'gap3D eps boundary: gap > eps -> not touching');
+}
 
 // ---- report ----------------------------------------------------------------------------------
 console.log(`\nPASS ${pass} / FAIL ${fail}`);

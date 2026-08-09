@@ -127,6 +127,37 @@ export function verticalGap(lower, upper, eps = 1e-4) {
 }
 
 /**
+ * 3D separation between two axis-aligned boxes — the honest junction metric. Unlike `verticalGap`
+ * (which only measures the Y axis) this is axis-agnostic: it measures the shortest straight-line
+ * distance between the two boxes across ALL THREE axes, so a joint that floats sideways or forward
+ * (not just above) is caught. Per axis the clamped separation is
+ *     sep_k = max(0, a.min[k]-b.max[k], b.min[k]-a.max[k])
+ * (0 when the boxes overlap or merely touch on that axis), and the reported `gap` is the Euclidean
+ * length of that separation vector — so a joint separated 0.3 on x AND 0.4 on y reads 0.5, NOT 0.4
+ * (a per-axis max would wrongly report 0.4 and miss the diagonal float).
+ *
+ * `overlapping` means a genuine INTERIOR overlap on every axis (the volumes interpenetrate), which is
+ * strictly stronger than sep===0: two boxes sharing a face have sep 0 on the split axis yet do NOT
+ * interpenetrate, so they are `touching` (gap <= eps) but NOT `overlapping`. That distinction is the
+ * whole point at a junction — face contact is a good weld; interpenetration is a modeling error.
+ * @param {{min:{x:number,y:number,z:number},max:{x:number,y:number,z:number}}} a
+ * @param {{min:{x:number,y:number,z:number},max:{x:number,y:number,z:number}}} b
+ * @param {number} [eps=1e-4]  touch tolerance on the Euclidean gap.
+ * @returns {{sep:{x:number,y:number,z:number}, gap:number, touching:boolean, overlapping:boolean}}
+ */
+export function gap3D(a, b, eps = 1e-4) {
+  const sep = { x: 0, y: 0, z: 0 };
+  let interiorOnAll = true;
+  for (const k of ['x', 'y', 'z']) {
+    sep[k] = Math.max(0, a.min[k] - b.max[k], b.min[k] - a.max[k]);
+    // Interior overlap on axis k requires STRICT overlap on both sides (face contact does not count).
+    if (!(a.min[k] < b.max[k] && b.min[k] < a.max[k])) interiorOnAll = false;
+  }
+  const gap = Math.hypot(sep.x, sep.y, sep.z);
+  return { sep, gap, touching: gap <= eps, overlapping: interiorOnAll };
+}
+
+/**
  * Undirected-edge valence check over a flat triangle index array.
  * @param {ArrayLike<number>} indexArray  length is a multiple of 3.
  * @returns {{closed:boolean, openEdges:number, nonManifoldEdges:number}}
@@ -361,6 +392,33 @@ export async function checkGeometry(objects, opts = {}) {
       + JSON.stringify(findings));
   }
   return { ok, findings };
+}
+
+/**
+ * Verify two meshes actually MEET at their junction — an axis-agnostic 3D gap check. Boxes the two
+ * meshes with Box3.setFromObject(mesh, true) (precise=true, so the box hugs the transformed geometry,
+ * not a loose local-space AABB), then runs the pure `gap3D`. A gap over `maxGap` is a floating joint
+ * — the exact "vertical gaps float / incoherent unions between cylinders" failure mode this catches.
+ * REPORTS ONLY — never moves either mesh. Emits with `console.error` (NEVER console.assert, which the
+ * gate cannot see) so the gate registers the failure.
+ * @param {import('three').Object3D} meshA
+ * @param {import('three').Object3D} meshB
+ * @param {{maxGap?:number, emit?:boolean, label?:string}} [opts]
+ * @returns {Promise<{ok:boolean, gap:number, sep:{x:number,y:number,z:number}, touching:boolean, overlapping:boolean, label:string}>}
+ */
+export async function checkJunction(meshA, meshB, { maxGap = 0.01, emit = true, label = 'junction' } = {}) {
+  const THREE = await import('three');
+  const ba = new THREE.Box3().setFromObject(meshA, true);
+  const bb = new THREE.Box3().setFromObject(meshB, true);
+  const boxA = { min: { x: ba.min.x, y: ba.min.y, z: ba.min.z }, max: { x: ba.max.x, y: ba.max.y, z: ba.max.z } };
+  const boxB = { min: { x: bb.min.x, y: bb.min.y, z: bb.min.z }, max: { x: bb.max.x, y: bb.max.y, z: bb.max.z } };
+  const { sep, gap, touching, overlapping } = gap3D(boxA, boxB);
+  const ok = gap <= maxGap;
+  if (emit && !ok) {
+    console.error(`[geom-verify] ${label}: gap ${gap.toFixed(4)}m > ${maxGap}m `
+      + `(sep x=${sep.x.toFixed(4)} y=${sep.y.toFixed(4)} z=${sep.z.toFixed(4)}) — floating joint`);
+  }
+  return { ok, gap, sep, touching, overlapping, label };
 }
 
 /**
