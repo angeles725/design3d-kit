@@ -35,16 +35,23 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      responses — must be empty) — plus `probe.mjs` medians ≤ spec `perf_budget` (draws, tris),
      against a local http server, never `file://`. Probe `fps` is informational only
      (unreliable under SwiftShader) — never gate on it.
-   - threejs framing & geometry (numerical, `library/harness/geom-verify.mjs`, r160-vetted): during
-     capture, run `checkFraming(subject, camera)` in-page — a subject offscreen, straddling the near
-     plane, or mis-composed emits `console.error`, caught by the console-clean sidecar above (NO new
-     schema). The `w<=0` guard is load-bearing: three's `Vector3.project` divides clip x/y by clip-w
-     with NO sign guard, so a corner behind the near plane flips the NDC sign and an off-frame subject
-     reads as false-green "well framed" — the framing miss recorded across 5 retros. `checkGeometry`
-     (concentric / high-IoU AABB pairs) is ADVISORY, not a hard fail: it REPORTS candidates for the
-     modeler (a bolt legitimately sits inside a housing's AABB; an L-shape shares a high AABB IoU with
-     no real overlap) and NEVER mutates the scene. Wiring the in-page call into the capture harness is
-     the portable-QA-core follow-up; until then this is a documented, Node-tested contract.
+   - threejs framing & geometry (numerical, `library/harness/geom-verify.mjs`, r160-vetted): the
+     design exposes `window.__qaFraming` (see `library/recipes/qa-framing-hook.md`) — a zero-arg
+     closure returning the camera MVP + the SUBJECT's 8 world-AABB corners as RAW plain data (no
+     verdict). `research/tools/framing-probe.mjs` loads the page under SwiftShader, reads that hook,
+     and runs `geom-verify`'s PURE CORE (`projectCornersNDC` + `framingMetrics`) — the SAME numerics
+     the in-page `checkFraming` wrapper uses, so there is one source of truth and zero drift. `ok`
+     requires `fullyVisible && wellFramed && !overlapsHUD`; a subject offscreen, cropped at a frame
+     edge, straddling the near plane, or hidden behind the HUD makes `ok===false` and the probe exits
+     nonzero — record it as `mechanical.framing` (a framing failure FAILS the gate). A design with
+     NO `__qaFraming` hook is a SKIP (`status:'no-hook'`), never a fabricated pass. The `w<=0` guard
+     is load-bearing: three's `Vector3.project` divides clip x/y by clip-w with NO sign guard, so a
+     corner behind the near plane flips the NDC sign and an off-frame subject reads as false-green
+     "well framed" — the framing miss recorded across 5 retros; the probe therefore refuses a verdict
+     (`straddles-near-plane`) instead of trusting flipped NDC. `checkGeometry` (concentric / high-IoU
+     AABB pairs) is ADVISORY, not a hard fail: it REPORTS candidates for the modeler (a bolt
+     legitimately sits inside a housing's AABB; an L-shape shares a high AABB IoU with no real
+     overlap) and NEVER mutates the scene.
    - blender: scene stats (polys, object count) ≤ budget via MCP scene-inspection code.
    - **Invariant tests** (when the design has a test suite): run it; a red suite BLOCKS the gate.
      Scope them per §Test-vs-render jurisdiction below — deterministic invariants only. Record it in
