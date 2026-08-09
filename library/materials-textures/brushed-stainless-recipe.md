@@ -1,25 +1,39 @@
 # recipe: brushed-stainless-recipe
 
+> **CORRECTION (2026-08-09 · supersedes the `environmentIntensity` claims below).**
+> `scene.environmentIntensity` **does not exist in three r0.160.0** — it is a silent no-op (added at
+> scene level only in r164+; verified by grepping the r0.160.0 build, research **B125 §E**). The 18/18
+> assets read satin NOT because of that line (it did nothing) but because of the **RoomEnvironment IBL**
+> (default intensity 1.0) + the **frontal fill** + the **brushed roughnessMap**. To actually push IBL
+> intensity in r160, set **`material.envMapIntensity`** PER MATERIAL (e.g. `matSteel.envMapIntensity = 1.9`).
+> For stubborn low-key metal, prefer **`AgXToneMapping`** (exposure ~0.9) over ACES — it preserves sub-0.1
+> luminance. The code/rules below are kept for provenance; read every `environmentIntensity` as
+> `material.envMapIntensity`.
+
 Make headless BARE stainless read as satin metal, not black. Bare metal (metalness ~0.9) reflects
 the dark house scene and, under the top-lit house rig, the vertical faces of boxy equipment reflect
 the dark horizon and read BLACK. The fix is a bright IBL the metal can reflect + a frontal fill that
 lights the vertical faces + a brushed roughnessMap that breaks the mirror into satin.
 
 **Why**: lavavajillas materials-attempt1 vertical body scored 0.73 (dark) → attempt2 PASS 0.78 after
-`environmentIntensity 2.15` + a frontal `DirectionalLight` fill (feature `stainless-body-read`).
+adding a frontal `DirectionalLight` fill + the brushed roughmap (feature `stainless-body-read`). The
+attempt also set `environmentIntensity 2.15`, but that knob is INERT in r160 — the frontal fill and the
+RoomEnvironment IBL are what lifted the score, not the intensity line.
 The identical recipe was re-derived and duplicated across 16/18 assets of the nave-panccadia
 equipment catalog — extracted here so the next equipment asset does not re-type it.
 
-**Coupling notes**: assumes the house ACES rig (`ACESFilmicToneMapping`, exposure ~1.15) and 1
-unit = 1 m. `environmentIntensity` is the knob — 1.9–2.15 measured good; drop it and stainless goes
-dark. Pairs with the RectAreaLight caveat: the §3.3 studio softbox stalls the SwiftShader
+**Coupling notes**: assumes the house rig (`ACESFilmicToneMapping`, exposure ~1.15 — or `AgXToneMapping`
+exp ~0.9 for stubborn low-key metal) and 1 unit = 1 m. The live IBL knob is `material.envMapIntensity`
+(~1.9); `scene.environmentIntensity` is a NO-OP in r160. What saves bare metal is the IBL it reflects
+(RoomEnvironment) + a frontal fill, not the key light. Pairs with the RectAreaLight caveat: the §3.3 studio softbox stalls the SwiftShader
 shader-compile, so the FRONTAL DirectionalLight fill is the headless-safe substitute (never
 RectAreaLight in the headless threejs track).
 
 **Exemplar / code** — `disenos/nave-panccadia/equipos/lavavajillas/lavavajillas.html:87-104`:
 
 ```js
-scene.environmentIntensity = 2.15;   // bright IBL so metal has something to reflect
+// scene.environmentIntensity is INERT in r160 (no-op — see correction at top). Push IBL PER MATERIAL
+// via matSteel.envMapIntensity below. RoomEnvironment already lights the metal at intensity 1.0.
 // ... house 3-light rig (key/fill/rim + ambient) ...
 scene.add(new THREE.HemisphereLight(0xeaf0ff, 0x2a3038, 0.7));          // lifts upward-facing faces
 const fill = new THREE.DirectionalLight(0xf4f7ff, 0.7);
@@ -36,11 +50,13 @@ function brushedRoughTex(){
 }
 const roughMap = brushedRoughTex();
 const matSteel = new THREE.MeshStandardMaterial({ color:0xd2d6d8, metalness:0.9, roughness:0.30, roughnessMap: roughMap });
+matSteel.envMapIntensity = 1.9;   // r160 LIVE IBL knob (scene.environmentIntensity does nothing) — push the reflected RoomEnvironment
 ```
 
 **Rules a re-implementation must keep**
 
-1. Keep `environmentIntensity` high (~1.9–2.15) — this, not the key light, is what saves bare metal.
+1. Set `material.envMapIntensity` high (~1.9) — `scene.environmentIntensity` is INERT in r160 (no-op).
+   The IBL the metal reflects (RoomEnvironment) + a frontal fill is what saves bare metal, not the key light.
 2. Add a FRONTAL fill (positive Z) — the house key/fill/rim light tops, not the camera-facing faces.
 3. `roughness ~0.30` + a brushed roughnessMap — a mirror-smooth 0.0 metal amplifies the dark
    reflection; the brush texture reads as satin 304 and hides the reflected horizon.
