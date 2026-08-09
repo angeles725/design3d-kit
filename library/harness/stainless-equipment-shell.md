@@ -9,8 +9,10 @@ PCFSoftShadow, baked shadows) + hero camera + OrbitControls (autoRotate OFF) + I
 re-type it.
 
 **Coupling notes**: three.js r0.160.0 via unpkg importmap; 1 unit = 1 m; house ACES rig (exposure
-1.15). `environmentIntensity` starts at ~1.9–2.15 (see `brushed-stainless-recipe`) so bare metal
-reads satin. `shadowMap.autoUpdate=false` — geometry added after the first frame needs another bake
+1.15 — or `AgXToneMapping` exp ~0.9 for stubborn low-key metal). Bare metal reads satin from the
+RoomEnvironment IBL + frontal fill; push intensity with `material.envMapIntensity` per material
+(`scene.environmentIntensity` is INERT in r160 — see `brushed-stainless-recipe`).
+`shadowMap.autoUpdate=false` — geometry added after the first frame needs another bake
 to cast. The HUD `PASS:` label is set per pass (dynamic-label rule); do not ship it stale.
 
 **Exemplar** — `disenos/nave-panccadia/equipos/mesa-trabajo/mesa-trabajo.html:1-90`. The template
@@ -84,7 +86,8 @@ controls.autoRotate = false; controls.autoRotateSpeed = 0.9;   // OFF by default
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 pmrem.dispose();
-scene.environmentIntensity = 1.9;   // bright IBL so bare metal has something to reflect (else stainless reads black)
+// scene.environmentIntensity is INERT in r160 (no-op; r164+ only). RoomEnvironment above lights the
+// scene at intensity 1.0; push a bare-metal material with material.envMapIntensity (~1.9) when you build it.
 
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(4, 6, 3); sun.castShadow = true;
