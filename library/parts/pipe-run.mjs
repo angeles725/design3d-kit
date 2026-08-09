@@ -16,6 +16,7 @@
 //     per run if pipes must change state independently).
 
 import * as THREE from 'three';
+import { radialSegmentsFor, sphereSegmentsFor } from './adaptive-segments.mjs';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -26,9 +27,11 @@ const UP = new THREE.Vector3(0, 1, 0);
  * @param {number} opts.radius                      pipe radius (caller units).
  * @param {THREE.Material} opts.material            injected material (never a global registry).
  * @param {number} [opts.elbowRadius]               fitting sphere radius; default radius*1.16.
- * @param {number} [opts.radialSegments=12]
- * @param {number} [opts.elbowWidthSegments=12]
- * @param {number} [opts.elbowHeightSegments=8]
+ * @param {number} [opts.targetEdgeLength]          when set, segment counts derive from it (adaptive
+ *                                                  tessellation); omit for the historic fixed 12/12/8.
+ * @param {number} [opts.radialSegments]            explicit override; wins over adaptive/default.
+ * @param {number} [opts.elbowWidthSegments]        explicit override; wins over adaptive/default.
+ * @param {number} [opts.elbowHeightSegments]       explicit override; wins over adaptive/default.
  * @returns {THREE.Group}
  */
 export function createPipeRun({
@@ -36,16 +39,25 @@ export function createPipeRun({
   radius,
   material,
   elbowRadius = radius * 1.16,
-  radialSegments = 12,
-  elbowWidthSegments = 12,
-  elbowHeightSegments = 8,
+  targetEdgeLength,
+  radialSegments,
+  elbowWidthSegments,
+  elbowHeightSegments,
 }) {
+  // Adaptive tessellation: with targetEdgeLength, counts scale with radius so a thin pipe and a fat
+  // header stop paying the same tri budget. An explicit *Segments override always wins; with neither,
+  // counts fall back to the historic fixed 12/12/8 — byte-identical to the pre-adaptive builder.
+  const radSeg = radialSegments ?? radialSegmentsFor(radius, targetEdgeLength) ?? 12;
+  const elbowSeg = sphereSegmentsFor(elbowRadius, targetEdgeLength);
+  const elbowW = elbowWidthSegments ?? elbowSeg?.width ?? 12;
+  const elbowH = elbowHeightSegments ?? elbowSeg?.height ?? 8;
+
   const group = new THREE.Group();
   const pts = points.map(p => (p && p.isVector3) ? p.clone() : new THREE.Vector3(p[0], p[1], p[2]));
 
   // elbows (one sphere per waypoint, slightly wider than the pipe)
   for (const p of pts) {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(elbowRadius, elbowWidthSegments, elbowHeightSegments), material);
+    const s = new THREE.Mesh(new THREE.SphereGeometry(elbowRadius, elbowW, elbowH), material);
     s.position.copy(p);
     s.castShadow = true;
     group.add(s);
@@ -57,7 +69,7 @@ export function createPipeRun({
     const dir = new THREE.Vector3().subVectors(b, a);
     const len = dir.length();
     if (len < 0.01) continue;
-    const c = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, radialSegments), material);
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, radSeg), material);
     c.position.copy(a).add(dir.clone().multiplyScalar(0.5));
     c.quaternion.setFromUnitVectors(UP, dir.normalize());
     c.castShadow = true;
