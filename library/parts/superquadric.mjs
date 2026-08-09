@@ -93,3 +93,30 @@ export function superquadricGrid({ a, b, c, e1, e2, uSeg = 24, vSeg = 16 }) {
 
   return { positions, indices };
 }
+
+// -------- in-page builder (dynamic three import; async) --------------------------------------------
+/**
+ * Build a rounded housing/tank as a single Mesh in ONE call — a superellipsoid surface instead of a
+ * box + edge cylinders + corner spheres CSG-unioned. Pick e1/e2 for the silhouette: e≈1 → ellipsoid,
+ * e≈0.2–0.4 → rounded box (soft chamfer), larger e → pinched/octahedral. The caller injects the
+ * material (never a global registry) and parents the returned Mesh.
+ *
+ * ASYNC: loads three via a dynamic `import('three')` INSIDE the function so this module stays
+ * pure-Node importable and its pure exports (signedPow/superquadricPoint/superquadricGrid) remain
+ * unit-testable without three.js resolution.
+ * @param {{a:number,b:number,c:number,e1:number,e2:number,uSeg?:number,vSeg?:number}} p
+ *   semi-axes a/b/c + roundness exponents e1 (latitude) / e2 (longitude); uSeg/vSeg grid resolution.
+ * @param {THREE.Material} material  injected material.
+ * @returns {Promise<THREE.Mesh>}  a shadow-casting/receiving Mesh the caller parents.
+ */
+export async function makeSuperquadric({ a, b, c, e1, e2, uSeg = 24, vSeg = 16 }, material) {
+  const THREE = await import('three');
+  const { positions, indices } = superquadricGrid({ a, b, c, e1, e2, uSeg, vSeg });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, material);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  return mesh;
+}

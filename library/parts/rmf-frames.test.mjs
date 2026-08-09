@@ -1,6 +1,6 @@
 // Pure-Node test for parts/rmf-frames.mjs — imports only the pure math (no three).
 // Run: node library/parts/rmf-frames.test.mjs   (exit 0 = all green)
-import { rmfFrames } from './rmf-frames.mjs';
+import { rmfFrames, tubeGeometryFromFrames } from './rmf-frames.mjs';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; } else { fail++; console.error('FAIL: ' + msg); } }
@@ -99,6 +99,37 @@ const qcFrames = rmfFrames(qcPoints, qcTangents, planeNormal);
   }
   ok(ortho, 'helix (non-planar): every frame orthonormal');
   ok(smooth, 'helix: r transports smoothly (no 180° flip between adjacent samples)');
+}
+
+// --- tubeGeometryFromFrames: straight +x tube, 4 samples, 8 radial segments ------------------------
+// centerline points {0..3,0,0}, unit tangents {1,0,0}, seed r0 {0,1,0}; radius 0.5.
+{
+  const pts = [], tans = [];
+  for (let i = 0; i < 4; i++) { pts.push({ x: i, y: 0, z: 0 }); tans.push({ x: 1, y: 0, z: 0 }); }
+  const frames = rmfFrames(pts, tans, { x: 0, y: 1, z: 0 });
+  const radius = 0.5, radialSegments = 8;
+  const { positions, indices } = tubeGeometryFromFrames(pts, frames, radius, radialSegments);
+
+  // Array sizes: 4 rings × 8 verts × 3 coords; (4-1) ring-gaps × 8 quads × 6 tri-indices.
+  ok(positions.length === 4 * 8 * 3, 'tube: positions.length === 4*8*3');
+  ok(indices.length === (4 - 1) * 8 * 6, 'tube: indices.length === (4-1)*8*6');
+
+  // Every ring vertex sits at distance ≈ radius from its own centerline point.
+  let allRadius = true, allInPlane = true;
+  for (let i = 0; i < 4; i++) {
+    const c = pts[i], t = tans[i];
+    for (let k = 0; k < radialSegments; k++) {
+      const o = (i * radialSegments + k) * 3;
+      const vx = positions[o], vy = positions[o + 1], vz = positions[o + 2];
+      const dx = vx - c.x, dy = vy - c.y, dz = vz - c.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (!approx(dist, radius)) allRadius = false;
+      // Ring lies in the frame (r,s) plane ⊥ t, so (vertex - center) · t ≈ 0 for the straight tube.
+      if (!approx(dx * t.x + dy * t.y + dz * t.z, 0)) allInPlane = false;
+    }
+  }
+  ok(allRadius, 'tube: every ring vertex is ≈ radius (0.5) from its centerline point');
+  ok(allInPlane, 'tube: ring vertices lie in the frame plane (dot(vertex - center, tangent) ≈ 0)');
 }
 
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
