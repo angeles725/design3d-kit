@@ -144,6 +144,61 @@ export function edgeManifold(indexArray) {
 }
 
 /**
+ * Signed volume of a closed triangle mesh via the divergence theorem: V = Σ v1·(v2×v3) / 6 over all
+ * triangles (vertices relative to the origin). For a closed mesh with outward CCW winding V > 0;
+ * V < 0 signals INSIDE-OUT (flipped winding) — a defect the visual gate misses because a flipped
+ * mesh often still renders plausibly. |V| is the enclosed volume (a cheap plausibility sanity-check).
+ * @param {ArrayLike<number>} positions  flat [x,y,z, ...] vertex positions.
+ * @param {ArrayLike<number>|null} [index]  flat triangle indices; null = non-indexed triangle soup.
+ * @returns {number} signed volume.
+ */
+export function signedVolume(positions, index = null) {
+  let v = 0;
+  const add = (a, b, c) => {
+    const ax = positions[a * 3], ay = positions[a * 3 + 1], az = positions[a * 3 + 2];
+    const bx = positions[b * 3], by = positions[b * 3 + 1], bz = positions[b * 3 + 2];
+    const cx = positions[c * 3], cy = positions[c * 3 + 1], cz = positions[c * 3 + 2];
+    v += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx); // v1·(v2×v3)
+  };
+  if (index) {
+    for (let i = 0; i < index.length; i += 3) add(index[i], index[i + 1], index[i + 2]);
+  } else {
+    const n = positions.length / 3;
+    for (let i = 0; i < n; i += 3) add(i, i + 1, i + 2);
+  }
+  return v / 6;
+}
+
+/**
+ * Combined mesh-integrity verdict from raw geometry arrays: manifold-ness (edge valence) + signed
+ * volume. `insideOut` is the actionable flag: a CLOSED mesh with negative signed volume has flipped
+ * winding. `watertight` = closed with no non-manifold edges. Pure; REPORTS, never mutates.
+ * NOTE: the manifold fields need an INDEX (welded geometry). Non-indexed soup has no shared vertices,
+ * so `closed` reads false regardless — weld by distance first; `signedVolume` is valid either way.
+ * @param {ArrayLike<number>} positions  flat [x,y,z, ...].
+ * @param {ArrayLike<number>|null} [index]
+ * @returns {{closed:boolean, openEdges:number, nonManifoldEdges:number, signedVolume:number, insideOut:boolean, watertight:boolean}}
+ */
+export function meshIntegrity(positions, index = null) {
+  let idx = index;
+  if (!idx) {
+    const n = positions.length / 3;
+    idx = new Array(n);
+    for (let i = 0; i < n; i++) idx[i] = i;
+  }
+  const em = edgeManifold(idx);
+  const vol = signedVolume(positions, index);
+  return {
+    closed: em.closed,
+    openEdges: em.openEdges,
+    nonManifoldEdges: em.nonManifoldEdges,
+    signedVolume: vol,
+    insideOut: em.closed && vol < 0,
+    watertight: em.closed && em.nonManifoldEdges === 0,
+  };
+}
+
+/**
  * Guard a derived dimension: throw unless it is finite and >= margin (a visible positive margin,
  * not merely a positive sign — a subtraction that lands at -0.02 or +1e-9 is a modeling fault).
  * @param {number} value
@@ -292,4 +347,27 @@ export async function checkGeometry(objects, opts = {}) {
       + JSON.stringify(findings));
   }
   return { ok, findings };
+}
+
+/**
+ * Mesh-level integrity for a single three.js Mesh: extracts its geometry arrays and runs
+ * meshIntegrity. Reads three objects but constructs none (no import needed). REPORTS ONLY.
+ * `ok` is false only for an INSIDE-OUT mesh (flipped winding); an open/non-manifold mesh is common
+ * and legitimate (a hollow shell, a cut-away), so it is reported but does not fail the check.
+ * @param {import('three').Mesh} mesh
+ * @param {{emit?:boolean, label?:string}} [opts]
+ * @returns {{ok:boolean, reason?:string, closed?:boolean, openEdges?:number, nonManifoldEdges?:number, signedVolume?:number, insideOut?:boolean, watertight?:boolean}}
+ */
+export function checkMeshIntegrity(mesh, opts = {}) {
+  const { emit = true, label } = opts;
+  const g = mesh && mesh.geometry;
+  const positions = g && g.attributes && g.attributes.position && g.attributes.position.array;
+  if (!positions) return { ok: true, reason: 'no-position' };
+  const index = g.index ? g.index.array : null;
+  const r = meshIntegrity(positions, index);
+  const ok = !r.insideOut;
+  if (emit && !ok) {
+    console.error(`[geom-verify] mesh integrity FAIL (${label || mesh.name || mesh.uuid}): ` + JSON.stringify(r));
+  }
+  return { ok, ...r };
 }
