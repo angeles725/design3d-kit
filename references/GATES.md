@@ -35,6 +35,16 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      responses — must be empty) — plus `probe.mjs` medians ≤ spec `perf_budget` (draws, tris),
      against a local http server, never `file://`. Probe `fps` is informational only
      (unreliable under SwiftShader) — never gate on it.
+   - threejs framing & geometry (numerical, `library/harness/geom-verify.mjs`, r160-vetted): during
+     capture, run `checkFraming(subject, camera)` in-page — a subject offscreen, straddling the near
+     plane, or mis-composed emits `console.error`, caught by the console-clean sidecar above (NO new
+     schema). The `w<=0` guard is load-bearing: three's `Vector3.project` divides clip x/y by clip-w
+     with NO sign guard, so a corner behind the near plane flips the NDC sign and an off-frame subject
+     reads as false-green "well framed" — the framing miss recorded across 5 retros. `checkGeometry`
+     (concentric / high-IoU AABB pairs) is ADVISORY, not a hard fail: it REPORTS candidates for the
+     modeler (a bolt legitimately sits inside a housing's AABB; an L-shape shares a high AABB IoU with
+     no real overlap) and NEVER mutates the scene. Wiring the in-page call into the capture harness is
+     the portable-QA-core follow-up; until then this is a documented, Node-tested contract.
    - blender: scene stats (polys, object count) ≤ budget via MCP scene-inspection code.
    - **Invariant tests** (when the design has a test suite): run it; a red suite BLOCKS the gate.
      Scope them per §Test-vs-render jurisdiction below — deterministic invariants only. Record it in
