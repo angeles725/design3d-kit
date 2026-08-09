@@ -9,6 +9,8 @@ import {
   aabbContains,
   verticalGap,
   edgeManifold,
+  signedVolume,
+  meshIntegrity,
   assertPositive,
 } from './geom-verify.mjs';
 
@@ -97,6 +99,27 @@ ok(openTri.closed === false && openTri.openEdges === 3, 'edgeManifold single tri
 ok(threw(() => assertPositive(-0.5, 'neg')), 'assertPositive negative throws');
 ok(threw(() => assertPositive(0.0005, 'below-margin')), 'assertPositive 0.0005 (< default margin) throws');
 ok(assertPositive(5, 'ok') === 5, 'assertPositive 5 returns 5');
+
+// ---- signedVolume / meshIntegrity ------------------------------------------------------------
+// Tetra p0=(0,0,0) p1=(1,0,0) p2=(0,1,0) p3=(0,0,1). Faces touching p0 contribute 0 (origin), so
+// only the far face (1,2,3) sets the sign: wound CCW-outward -> V=+1/6, reversed -> -1/6.
+const tetraPos = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
+const tetraOut = [0, 2, 1, 0, 3, 2, 0, 1, 3, 1, 2, 3];   // outward -> +1/6
+const tetraIn = [0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2];    // reversed -> -1/6
+ok(approx(signedVolume(tetraPos, tetraOut), 1 / 6), 'signedVolume outward tetra = +1/6');
+ok(approx(signedVolume(tetraPos, tetraIn), -1 / 6), 'signedVolume reversed tetra = -1/6');
+ok(approx(signedVolume(tetraPos, tetraIn), -signedVolume(tetraPos, tetraOut)), 'signedVolume flips sign with winding');
+const tetraPos2 = [0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2];
+ok(approx(signedVolume(tetraPos2, tetraOut), 8 / 6), 'signedVolume scales x8 when positions x2');
+const soup = [];
+for (const i of tetraOut) { soup.push(tetraPos[i * 3], tetraPos[i * 3 + 1], tetraPos[i * 3 + 2]); }
+ok(approx(signedVolume(soup, null), 1 / 6), 'signedVolume non-indexed soup matches indexed');
+
+const miOut = meshIntegrity(tetraPos, tetraOut);
+ok(miOut.closed === true && miOut.watertight === true, 'meshIntegrity outward tetra: closed + watertight');
+ok(miOut.insideOut === false, 'meshIntegrity outward tetra: not inside-out');
+const miIn = meshIntegrity(tetraPos, tetraIn);
+ok(miIn.closed === true && miIn.insideOut === true, 'meshIntegrity reversed tetra: inside-out true');
 
 // ---- report ----------------------------------------------------------------------------------
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
