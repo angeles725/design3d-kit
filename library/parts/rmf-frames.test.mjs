@@ -132,5 +132,38 @@ const qcFrames = rmfFrames(qcPoints, qcTangents, planeNormal);
   ok(allInPlane, 'tube: ring vertices lie in the frame plane (dot(vertex - center, tangent) ≈ 0)');
 }
 
+// --- tubeGeometryFromFrames capEnds: watertight caps wound OUTWARD ---------------------------------
+// Same straight +x tube (4 samples, radius 0.5, 8 radial). Caps add 2 center verts + 2*radial tris.
+// The load-bearing check is the WINDING: the start-cap face normal must point -x (=-t[0]) and the
+// end-cap +x (=+t[last]); a reversed winding faces the cap inward and the open bore stays see-through.
+{
+  const pts = [], tans = [];
+  for (let i = 0; i < 4; i++) { pts.push({ x: i, y: 0, z: 0 }); tans.push({ x: 1, y: 0, z: 0 }); }
+  const frames = rmfFrames(pts, tans, { x: 0, y: 1, z: 0 });
+  const radius = 0.5, radialSegments = 8;
+
+  const open = tubeGeometryFromFrames(pts, frames, radius, radialSegments, false);
+  ok(open.positions.length === 4 * 8 * 3 && open.indices.length === (4 - 1) * 8 * 6,
+    'capEnds=false: geometry unchanged (no extra verts/tris)');
+
+  const capped = tubeGeometryFromFrames(pts, frames, radius, radialSegments, true);
+  ok(capped.positions.length === 4 * 8 * 3 + 2 * 3, 'capEnds: +2 center vertices');
+  ok(capped.indices.length === (4 - 1) * 8 * 6 + 2 * 8 * 3, 'capEnds: +2*radial cap triangles');
+
+  // geometric normal of an indexed triangle (a,b,c): (B-A) x (C-A).
+  const vert = (P, i) => ({ x: P[i * 3], y: P[i * 3 + 1], z: P[i * 3 + 2] });
+  const triNormal = (P, a, b, c) => {
+    const A = vert(P, a), B = vert(P, b), C = vert(P, c);
+    const e1 = { x: B.x - A.x, y: B.y - A.y, z: B.z - A.z };
+    const e2 = { x: C.x - A.x, y: C.y - A.y, z: C.z - A.z };
+    return { x: e1.y * e2.z - e1.z * e2.y, y: e1.z * e2.x - e1.x * e2.z, z: e1.x * e2.y - e1.y * e2.x };
+  };
+  const wall = (4 - 1) * 8 * 6;                 // wall index count; cap tris are interleaved after it
+  const nStart = triNormal(capped.positions, capped.indices[wall], capped.indices[wall + 1], capped.indices[wall + 2]);
+  const nEnd = triNormal(capped.positions, capped.indices[wall + 3], capped.indices[wall + 4], capped.indices[wall + 5]);
+  ok(nStart.x < 0 && approx(nStart.y, 0) && approx(nStart.z, 0), 'capEnds: start-cap normal points -x (outward, -t[0])');
+  ok(nEnd.x > 0 && approx(nEnd.y, 0) && approx(nEnd.z, 0), 'capEnds: end-cap normal points +x (outward, +t[last])');
+}
+
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail > 0 ? 1 : 0);
