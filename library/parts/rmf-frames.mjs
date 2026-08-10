@@ -104,14 +104,17 @@ export function rmfFrames(points, tangents, r0) {
 /**
  * Turn RMF frames + their centerline samples into a circular tube's flat position/index arrays.
  * For each sample i a ring of `radialSegments` verts is placed at `radius` in that frame's (r,s)
- * plane; consecutive rings are joined into quads (two triangles each). OPEN tube — no end caps.
+ * plane; consecutive rings are joined into quads (two triangles each). Open tube by default; pass
+ * `capEnds=true` to add a triangle-fan cap at each end so the tube reads as a closed solid (an open
+ * bore looks hollow / "missing a wall" from grazing angles).
  * @param {{x:number,y:number,z:number}[]} points        n centerline samples.
  * @param {{r:{x,y,z}, s:{x,y,z}, t:{x,y,z}}[]} frames    one frame per sample (same length as points).
  * @param {number} radius                                 tube radius, caller units.
  * @param {number} radialSegments                         verts per ring around the tube.
+ * @param {boolean} [capEnds=false]                       add outward-facing fan caps at both ends.
  * @returns {{positions:number[], indices:number[]}}  positions flat [x,y,z, ...], indices flat tri ids.
  */
-export function tubeGeometryFromFrames(points, frames, radius, radialSegments) {
+export function tubeGeometryFromFrames(points, frames, radius, radialSegments, capEnds = false) {
   const positions = [];
   // One ring of `radialSegments` verts per sample, in the frame's (r,s) plane at `radius`.
   for (let i = 0; i < points.length; i++) {
@@ -142,6 +145,26 @@ export function tubeGeometryFromFrames(points, frames, radius, radialSegments) {
     }
   }
 
+  // Optional end caps: a triangle fan from a center vertex to each end ring, wound so the cap face
+  // points OUTWARD (start-cap normal along -t[0]; end-cap along +t[last]). Wind it the other way and
+  // the cap faces inward, is back-face culled, and the open bore stays visible from grazing angles.
+  // The fan reuses the existing rim ring verts (only 2 new center verts); computeVertexNormals then
+  // smooths the rim — the cap FACE winding (not the averaged normal) is what closes the see-through.
+  if (capEnds && points.length >= 2) {
+    const nRings = points.length;
+    const c0 = positions.length / 3;                    // start-cap center vertex index
+    positions.push(points[0].x, points[0].y, points[0].z);
+    const cL = positions.length / 3;                    // end-cap center vertex index
+    const last = points[nRings - 1];
+    positions.push(last.x, last.y, last.z);
+    const endBase = (nRings - 1) * radialSegments;
+    for (let k = 0; k < radialSegments; k++) {
+      const kNext = (k + 1) % radialSegments;
+      indices.push(c0, kNext, k);                       // start cap: reversed winding -> normal -t[0]
+      indices.push(cL, endBase + k, endBase + kNext);   // end cap: forward winding -> normal +t[last]
+    }
+  }
+
   return { positions, indices };
 }
 
@@ -162,12 +185,14 @@ export function tubeGeometryFromFrames(points, frames, radius, radialSegments) {
  * @param {number} [opts.radialSegments]         explicit ring count override.
  * @param {number} [opts.tubularSegments]        explicit lengthwise sample count override.
  * @param {boolean} [opts.closed=false]          close the CatmullRom curve into a loop.
+ * @param {boolean} [opts.capEnds]               cap both open ends (defaults to true for an open tube,
+ *                                               false for a closed loop) so a bore never reads hollow.
  * @param {THREE.Material} material              injected material.
  * @returns {Promise<THREE.Mesh>}  a shadow-casting Mesh the caller parents.
  */
 export async function makeSweptTube(curvePoints, opts = {}, material) {
   const THREE = await import('three');
-  const { radius = 0.05, targetEdgeLength, radialSegments, tubularSegments, closed = false } = opts;
+  const { radius = 0.05, targetEdgeLength, radialSegments, tubularSegments, closed = false, capEnds } = opts;
   const curve = new THREE.CatmullRomCurve3(curvePoints.map(p => p.isVector3 ? p : new THREE.Vector3(p[0], p[1], p[2])), closed, 'centripetal');
   const nT = tubularSegments ?? (lengthSegmentsFor(curve.getLength(), targetEdgeLength) ?? 64);
   const pts = [], tans = [];
@@ -177,7 +202,7 @@ export async function makeSweptTube(curvePoints, opts = {}, material) {
   const r0 = new THREE.Vector3().crossVectors(t0, ax).normalize();
   const frames = rmfFrames(pts.map(v => ({ x: v.x, y: v.y, z: v.z })), tans.map(v => ({ x: v.x, y: v.y, z: v.z })), { x: r0.x, y: r0.y, z: r0.z });
   const radSeg = radialSegments ?? (radialSegmentsFor(radius, targetEdgeLength) ?? 12);
-  const { positions, indices } = tubeGeometryFromFrames(pts.map(v => ({ x: v.x, y: v.y, z: v.z })), frames, radius, radSeg);
+  const { positions, indices } = tubeGeometryFromFrames(pts.map(v => ({ x: v.x, y: v.y, z: v.z })), frames, radius, radSeg, capEnds ?? !closed);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   g.setIndex(indices); g.computeVertexNormals();
