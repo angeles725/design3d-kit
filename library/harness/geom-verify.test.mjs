@@ -283,6 +283,43 @@ ok(nonManifold.closed === false, 'edgeManifold non-manifold fan: not closed');
     ok(far2.pairs.length === 0, 'coplanarPairs 2 mm apart: separated, no lead');
   }
 
+  // A ZERO-THICKNESS sheet (a ground plane, a decal) has min === max on its axis, so it coincides
+  // with BOTH faces of whatever touches it and the same-facing rule cannot separate the two cases.
+  // It is REPORTED, deliberately. Found on the condensadora master: the 20 m ground plane vs the base
+  // channel resting on it came out as the worst lead in the scene, 0.96 m2, and nothing was wrong.
+  //
+  // Silencing it was tried and REJECTED. "Sheet with the solid wholly on one side" is ambiguous by
+  // construction: a floor facing +Y with a box ON it is harmless back-to-back contact, while the same
+  // floor with a slab UNDER it is a true fight — and an AABB does not carry the sheet's facing, so the
+  // two are indistinguishable here. Suppressing them would trade a false positive the reviewer
+  // discards for a false negative that disappears. The lead stays; the reviewer resolves it with the
+  // geometry, which is the only place the answer exists.
+  {
+    const r = coplanarPairs([
+      item('ground', -10, 0, -10, 10, 0, 10),
+      item('baseChannel', -0.6, 0, -0.4, 0.6, 0.075, 0.4),
+    ]);
+    ok(r.pairs.length === 1, 'coplanarPairs sheet under a solid: reported, resolved by the reviewer');
+  }
+
+  // Two coincident sheets are the classic decal fight and must never be silenced.
+  {
+    const decal = coplanarPairs([
+      item('wall', -1, 0, -1, 1, 0, 1),
+      item('decal', -0.5, 0, -0.5, 0.5, 0, 0.5),
+    ]);
+    ok(decal.pairs.length === 1, 'coplanarPairs two coincident sheets: the classic decal fight');
+  }
+
+  // A solid PIERCING a sheet is not a fight: the faces meet at a right angle, they are not coplanar.
+  {
+    const through = coplanarPairs([
+      item('sheet', -10, 0, -10, 10, 0, 10),
+      item('post', -0.2, -0.5, -0.2, 0.2, 0.5, 0.2),
+    ]);
+    ok(through.pairs.length === 0, 'coplanarPairs solid piercing a sheet: perpendicular, no fight');
+  }
+
   // Worst-first ordering: the modeler fixes the biggest shared surface first.
   {
     const r = coplanarPairs([
