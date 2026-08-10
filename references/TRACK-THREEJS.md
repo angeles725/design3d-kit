@@ -68,6 +68,13 @@ Found overlays OVERRIDE the generic defaults below.
   - A coplanar pair is INVISIBLE to console, count and framing checks: it renders, it is not an
     error, and it only shows up in a LIVE ORBIT or a moving capture. If the subject has stacked or
     inset faces, that is what has to be exercised.
+  - **DETECT it with `checkCoplanar` / `coplanarPairs`** (`library/harness/geom-verify.mjs`), once per
+    meaningful toggle state — a cut-away or an opened door swaps which faces are exposed. The result
+    is LEADS, not defects: AABBs cannot separate overlapping SURFACES from overlapping BOXES, so a
+    pair is confirmed against the geometry (hash the two run lists, or read the generator's own
+    arithmetic) before anyone calls it a defect. Out of 73 leads on nave-panccadia v22, one was real.
+    Follow the same rule the page itself follows for framing: publish RAW boxes from the scene
+    (`window.__qaBoxes`) and run the numerics OUTSIDE the page, or a detector bug certifies itself.
 - `OrbitControls` damping 0.08, `autoRotate` DEFAULT OFF for gate captures (a rotating scene never
   settles → capture's frame-settle loop writes `console_clean:false`); autoRotate stays behind a
   toggle. `PerspectiveCamera` FOV 32–42

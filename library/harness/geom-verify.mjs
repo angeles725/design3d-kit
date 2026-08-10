@@ -252,6 +252,90 @@ export function assertPositive(value, name, margin = 1e-3) {
   return value;
 }
 
+/**
+ * Find CO-PLANAR FACE PAIRS — the leads for z-fighting (surfaces that shimmer or flicker as the
+ * camera moves). Two faces fight when they sit at the same depth, so the depth buffer cannot decide
+ * which is in front and the winner changes per pixel and per frame.
+ *
+ * READ THE RESULT AS LEADS, NOT DEFECTS. This works on AABBs, so it cannot tell "these two SURFACES
+ * overlap" from "their BOXES overlap": two disjoint L-shaped rooms on one floor level are reported
+ * and are not fighting. Confirm a pair against the actual geometry before calling it a defect.
+ *
+ * Three discriminators keep the output usable. The naive version (any face within eps of any other)
+ * returned 550 pairs on a real 665-draw viewer; these took it to 73, of which one was real.
+ *  1. SAME-FACING ONLY — two maxes, or two mins. A max meeting a min is ordinary back-to-back
+ *     contact (a slab resting on a slab): the faces point away from each other and never shimmer.
+ *  2. NESTED SPANS DROPPED — when one box's extent on the axis lies wholly inside the other's and
+ *     the spans differ, the inner face is treated as buried. KNOWN FALSE NEGATIVE: a short box
+ *     sharing a face with a tall one is silenced although that face is exposed. AABBs cannot
+ *     separate the two cases; nested pairs need an eyeball, not a lower threshold.
+ *  3. MINIMUM SHARED SPAN — a few millimetres of incidental plan overlap is not a visible fight.
+ *
+ * The FIX for a confirmed pair is, in order: separate the layers by 1-2 mm; only where separation is
+ * impossible, `polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1` on the layer
+ * that must win; `logarithmicDepthBuffer` last of all, since it costs roughly half the frame rate.
+ *
+ * @param {{name:string, box:{min:{x:number,y:number,z:number}, max:{x:number,y:number,z:number}}}[]} boxes
+ * @param {{eps?:number, minOverlapSpan?:number, limit?:number}} [opts]
+ *        eps: coincidence tolerance in metres (default 0.0015 = 1.5 mm, the separation the rule asks for).
+ *        minOverlapSpan: metres of shared extent required on BOTH in-plane axes (default 0.05).
+ *        limit: cap on returned pairs, worst first (default 0 = no cap).
+ * @returns {{boxes:number, count:number, pairs:{a:string,b:string,axis:string,face:string,at:number,sep_mm:number,overlap_m2:number}[]}}
+ */
+export function coplanarPairs(boxes, opts = {}) {
+  const { eps = 0.0015, minOverlapSpan = 0.05, limit = 0 } = opts;
+  const items = boxes || [];
+  const AX = ['x', 'y', 'z'];
+  const pairs = [];
+
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const A = items[i].box, B = items[j].box;
+      for (let a = 0; a < 3; a++) {
+        const k = AX[a], u = AX[(a + 1) % 3], v = AX[(a + 2) % 3];
+
+        // (1) same-facing only.
+        const dMax = Math.abs(A.max[k] - B.max[k]);
+        const dMin = Math.abs(A.min[k] - B.min[k]);
+        const d = Math.min(dMax, dMin);
+        if (d > eps) continue;
+
+        // (2) nested spans are buried — unless the spans match, which is a true duplicate surface.
+        const spanA = A.max[k] - A.min[k], spanB = B.max[k] - B.min[k];
+        if (Math.min(spanA, spanB) > 1e-6) {
+          const nested = (A.min[k] <= B.min[k] + eps && A.max[k] >= B.max[k] - eps)
+            || (B.min[k] <= A.min[k] + eps && B.max[k] >= A.max[k] - eps);
+          if (nested && Math.abs(spanA - spanB) > eps) continue;
+        }
+
+        // (3) the two faces must actually share area.
+        const ou = Math.min(A.max[u], B.max[u]) - Math.max(A.min[u], B.min[u]);
+        const ov = Math.min(A.max[v], B.max[v]) - Math.max(A.min[v], B.min[v]);
+        if (ou < minOverlapSpan || ov < minOverlapSpan) continue;
+
+        const onMax = dMax <= dMin;
+        pairs.push({
+          a: items[i].name,
+          b: items[j].name,
+          axis: k,
+          face: onMax ? 'max' : 'min',
+          at: +(onMax ? A.max[k] : A.min[k]).toFixed(3),
+          sep_mm: +(d * 1000).toFixed(3),
+          overlap_m2: +(ou * ov).toFixed(3),
+        });
+        break;   // one finding per pair: the first coincident axis is the one to act on.
+      }
+    }
+  }
+
+  pairs.sort((x, y) => y.overlap_m2 - x.overlap_m2 || x.sep_mm - y.sep_mm);
+  return {
+    boxes: items.length,
+    count: pairs.length,
+    pairs: limit > 0 ? pairs.slice(0, limit) : pairs,
+  };
+}
+
 // ============================================================================================
 // THREE.JS-FACING WRAPPERS — async; load three via dynamic import at call time.
 // ============================================================================================
@@ -419,6 +503,65 @@ export async function checkJunction(meshA, meshB, { maxGap = 0.01, emit = true, 
       + `(sep x=${sep.x.toFixed(4)} y=${sep.y.toFixed(4)} z=${sep.z.toFixed(4)}) — floating joint`);
   }
   return { ok, gap, sep, touching, overlapping, label };
+}
+
+/**
+ * Sweep a built scene for z-fighting leads. Boxes every VISIBLE mesh with
+ * Box3.setFromObject(mesh, true) and runs the pure `coplanarPairs`. REPORTS ONLY — never separates,
+ * offsets or deletes anything. Emits with `console.error` (NEVER console.assert, which the gate
+ * cannot see) so a gate registers the finding.
+ *
+ * Why this check has to exist: a z-fight is INVISIBLE to console checks, draw counts, framing
+ * checks and still captures. It only appears in motion, so a scene can be gate-green and shimmer
+ * for the operator on the first orbit.
+ *
+ * Visibility is resolved through the whole ancestor chain, not just `mesh.visible` — a mesh inside a
+ * hidden group is not on screen and cannot fight. Run it once per meaningful TOGGLE STATE: a cut-away
+ * or an opened door swaps which surfaces are exposed.
+ *
+ * @param {import('three').Object3D|import('three').Scene} root  scene or subtree to sweep.
+ * @param {{eps?:number, minOverlapSpan?:number, limit?:number, emit?:boolean, label?:string}} [opts]
+ * @returns {Promise<{ok:boolean, meshes:number, count:number, findings:object[], label:string}>}
+ */
+export async function checkCoplanar(root, opts = {}) {
+  const THREE = await import('three');
+  const { eps, minOverlapSpan, limit = 12, emit = true, label = 'scene' } = opts;
+
+  // Name a mesh by its nearest NAMED ancestors, so a finding points at something actionable.
+  const nameOf = (o) => {
+    let p = o; const parts = [];
+    while (p && parts.length < 3) { if (p.name) parts.unshift(p.name); p = p.parent; }
+    return parts.length ? parts.join('/') : o.type;
+  };
+  const onScreen = (o) => {
+    let p = o;
+    while (p) { if (!p.visible) return false; p = p.parent; }
+    return true;
+  };
+
+  root.updateMatrixWorld(true);
+  const boxes = [];
+  root.traverse((o) => {
+    if (!o.isMesh || !onScreen(o)) return;
+    const b = new THREE.Box3().setFromObject(o, true);
+    if (b.isEmpty() || !Number.isFinite(b.min.x)) return;
+    boxes.push({
+      name: nameOf(o),
+      box: {
+        min: { x: b.min.x, y: b.min.y, z: b.min.z },
+        max: { x: b.max.x, y: b.max.y, z: b.max.z },
+      },
+    });
+  });
+
+  const r = coplanarPairs(boxes, { eps, minOverlapSpan, limit });
+  const ok = r.count === 0;
+  if (emit && !ok) {
+    console.error(`[geom-verify] coplanar leads (${label}): ${r.count} pair(s) over ${r.boxes} `
+      + `visible meshes — CONFIRM against geometry before calling any of them a defect: `
+      + JSON.stringify(r.pairs));
+  }
+  return { ok, meshes: r.boxes, count: r.count, findings: r.pairs, label };
 }
 
 /**

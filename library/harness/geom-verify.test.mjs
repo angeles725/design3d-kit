@@ -13,6 +13,7 @@ import {
   meshIntegrity,
   assertPositive,
   gap3D,
+  coplanarPairs,
 } from './geom-verify.mjs';
 
 let pass = 0, fail = 0;
@@ -195,6 +196,120 @@ ok(nonManifold.closed === false, 'edgeManifold non-manifold fan: not closed');
   const over = { min: { x: 0, y: 0, z: 2e-4 }, max: { x: 1, y: 1, z: 1 } };  // sep.z 2e-4 > 1e-4
   ok(gap3D(a, under).touching === true, 'gap3D eps boundary: gap < eps -> touching');
   ok(gap3D(a, over).touching === false, 'gap3D eps boundary: gap > eps -> not touching');
+}
+
+// ---- coplanarPairs (NEW) ---------------------------------------------------------------------
+// Z-fighting leads: two SAME-FACING faces at the same level, both exposed, overlapping in area.
+// Every discriminator below exists because the naive version (any face within eps of any other)
+// reported 550 pairs on the nave-panccadia viewer where 73 were plausible and ONE was real.
+{
+  const item = (name, x0, y0, z0, x1, y1, z1) => ({
+    name, box: { min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } },
+  });
+
+  // Two 2 m slabs of equal height, offset 0.5 m in plan, whose TOPS both sit at y=1. Only the Y
+  // faces coincide (x and z are 0.5 m apart), so the axis in the finding is the one under test.
+  {
+    const r = coplanarPairs([
+      item('floorA', 0, 0, 0, 2, 1, 2),
+      item('floorB', 0.5, 0, 0.5, 2.5, 1, 2.5),
+    ]);
+    ok(r.pairs.length === 1, 'coplanarPairs same-level tops: 1 pair');
+    ok(r.pairs[0].axis === 'y', 'coplanarPairs same-level tops: axis y');
+    ok(r.pairs[0].face === 'max', 'coplanarPairs same-level tops: face max');
+    ok(r.pairs[0].sep_mm === 0, 'coplanarPairs same-level tops: sep_mm 0');
+    ok(approx(r.pairs[0].at, 1), 'coplanarPairs same-level tops: reports the level (y=1)');
+    ok(approx(r.pairs[0].overlap_m2, 2.25), 'coplanarPairs same-level tops: 1.5 x 1.5 m shared');
+    ok(r.count === 1 && r.boxes === 2, 'coplanarPairs same-level tops: count + boxes reported');
+  }
+
+  // A MAX meeting a MIN is back-to-back contact — a slab resting on another. It shares a plane but
+  // the two faces point AWAY from each other, so nothing can shimmer. Counting these is what took
+  // the real scene from 8 pairs to 550, so it must report NOTHING.
+  {
+    const r = coplanarPairs([
+      item('slab', 0, 0, 0, 1, 1, 1),
+      item('slabOnTop', 0, 1, 0, 1, 2, 1),
+    ]);
+    ok(r.pairs.length === 0, 'coplanarPairs back-to-back (max meets min): no pair');
+  }
+
+  // NESTED SPANS are dropped: one box's extent on the axis lies wholly inside the other's and the
+  // spans differ, so the inner face is treated as buried. This is a noise filter, and it is the
+  // check's ONE known false negative — a short box sharing a face with a tall one is silenced even
+  // though that face is genuinely exposed. The test freezes the LIMIT, not a correctness claim;
+  // bounding boxes cannot tell the two apart, so the fix is to eyeball nested pairs by hand.
+  {
+    const r = coplanarPairs([
+      item('shell', 0, 0, 0, 4, 4, 4),
+      item('nested', 1, 1, 1, 2, 4, 2),
+    ]);
+    ok(r.pairs.length === 0, 'coplanarPairs nested spans: dropped (documented false negative)');
+  }
+
+  // Two IDENTICAL boxes contain each other, but their spans match — that is a genuine duplicate
+  // surface, the worst z-fight there is, and the containment filter must NOT swallow it.
+  {
+    const r = coplanarPairs([
+      item('dupA', 0, 0, 0, 1, 1, 1),
+      item('dupB', 0, 0, 0, 1, 1, 1),
+    ]);
+    ok(r.pairs.length === 1, 'coplanarPairs identical boxes: still reported (equal spans, not buried)');
+  }
+
+  // Faces at the same level but barely overlapping in plan (2 cm strip): too little shared area to
+  // read as a fight. Equal spans, so the nested filter is not what rejects it.
+  {
+    const r = coplanarPairs([
+      item('wideA', 0, 0, 0, 1, 1, 1),
+      item('slimB', 0.98, 0, 0, 3, 1, 1),
+    ]);
+    ok(r.pairs.length === 0, 'coplanarPairs 2 cm plan overlap: below minOverlapSpan, no pair');
+  }
+
+  // eps boundary: 1 mm apart is a fight at the 1.5 mm default; 2 mm apart is separated geometry,
+  // which is exactly the fix the rule prescribes (pull the layers 1-2 mm apart).
+  {
+    const near = coplanarPairs([
+      item('a', 0, 0, 0, 2, 1, 2),
+      item('b', 0.5, -0.001, 0.5, 2.5, 0.999, 2.5),
+    ]);
+    ok(near.pairs.length === 1, 'coplanarPairs 1 mm apart: still a lead at default eps 1.5 mm');
+    ok(near.pairs[0].sep_mm === 1, 'coplanarPairs 1 mm apart: sep_mm reported as 1');
+    const far2 = coplanarPairs([
+      item('a', 0, 0, 0, 2, 1, 2),
+      item('b', 0.5, -0.002, 0.5, 2.5, 0.998, 2.5),
+    ]);
+    ok(far2.pairs.length === 0, 'coplanarPairs 2 mm apart: separated, no lead');
+  }
+
+  // Worst-first ordering: the modeler fixes the biggest shared surface first.
+  {
+    const r = coplanarPairs([
+      item('smallA', 0, 0, 0, 0.3, 1, 0.3),
+      item('smallB', 0, 0.5, 0, 0.3, 1, 0.3),
+      item('bigA', 10, 0, 10, 12, 1, 12),
+      item('bigB', 10, 0.5, 10, 12, 1, 12),
+    ]);
+    ok(r.pairs.length === 2, 'coplanarPairs ordering fixture: 2 pairs');
+    ok(r.pairs[0].a === 'bigA', 'coplanarPairs ordering: largest shared area first');
+  }
+
+  // A caller can widen the tolerance to sweep for near-coplanar layers.
+  {
+    const r = coplanarPairs([
+      item('a', 0, 0, 0, 2, 1, 2),
+      item('b', 0.5, -0.005, 0.5, 2.5, 0.995, 2.5),
+    ], { eps: 0.006 });
+    ok(r.pairs.length === 1, 'coplanarPairs eps option: 5 mm reported when eps widened to 6 mm');
+  }
+
+  // Degenerate input must not throw or invent pairs.
+  {
+    ok(coplanarPairs([]).pairs.length === 0, 'coplanarPairs empty input: no pairs, no throw');
+    ok(coplanarPairs([item('lonely', 0, 0, 0, 1, 1, 1)]).pairs.length === 0,
+      'coplanarPairs single box: no self-pair');
+  }
 }
 
 // ---- report ----------------------------------------------------------------------------------
