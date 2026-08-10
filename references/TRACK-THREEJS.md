@@ -32,9 +32,25 @@ Found overlays OVERRIDE the generic defaults below.
   `scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture`.
   - **Bare metal (metalness ~0.9)** reflects the dark house scene and reads BLACK — worst on the
     vertical faces of boxy equipment, which the top-lit house rig misses. Headless-safe fix:
-    `scene.environmentIntensity ≈ 2.15` + a `HemisphereLight` + a FRONTAL `DirectionalLight` fill +
+    ~~`scene.environmentIntensity ≈ 2.15`~~ **`material.envMapIntensity ≈ 1.9`** + a
+    `HemisphereLight` + a FRONTAL `DirectionalLight` fill +
     roughness ~0.30 with a brushed CanvasTexture roughnessMap. This is the headless complement to the
     §3.3 studio variant (whose RectAreaLight stalls SwiftShader — see the QA-commands caveat).
+    > **CORRECTION 2026-08-10.** `scene.environmentIntensity` **does not exist in three r0.160.0** —
+    > it is a silent no-op (scene-level property added in r164+; verified by grepping the r0.160.0
+    > build, research B125 §E). The knob that is live in r160 is **per material**:
+    > `mat.envMapIntensity = 1.9`. The assets that read satin under this rig did so because of the
+    > RoomEnvironment IBL + the frontal fill + the brushed roughnessMap, never because of that line.
+    > `brushed-stainless-recipe.md` was corrected on 2026-08-09; THIS file was not, so the dead
+    > property kept being copied into new assets for a further day. When a fact is corrected, grep
+    > the kit for every other place that states it.
+  - **Painted sheet (casings, canopies, cabinets)** is a DIELECTRIC WITH A CLEAR LAYER:
+    `metalness: 0` + `clearcoat ~0.9` + `clearcoatRoughness ~0.12` on a `MeshPhysicalMaterial`.
+    Do NOT reach for an intermediate metalness to make paint look glossy — measured on the
+    condensing-unit master, `metalness 0.35` bought the specular response (highlight spread
+    44.9 → 82.9) by spending a third of the diffuse, and every large face went dark
+    (top deck luminance 162 → 84); the clearcoat form keeps both (135 / spread 82.6).
+    `clearcoat` compiles fine under SwiftShader — it is `transmission` that stalls it.
 - `OrbitControls` damping 0.08, `autoRotate` DEFAULT OFF for gate captures (a rotating scene never
   settles → capture's frame-settle loop writes `console_clean:false`); autoRotate stays behind a
   toggle. `PerspectiveCamera` FOV 32–42
