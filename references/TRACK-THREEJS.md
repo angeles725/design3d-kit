@@ -51,6 +51,23 @@ Found overlays OVERRIDE the generic defaults below.
     44.9 → 82.9) by spending a third of the diffuse, and every large face went dark
     (top deck luminance 162 → 84); the clearcoat form keeps both (135 / spread 82.6).
     `clearcoat` compiles fine under SwiftShader — it is `transmission` that stalls it.
+- **Z-FIGHTING (surfaces that shimmer or flicker as the camera moves)** is the depth buffer
+  unable to order two faces at the same coordinate. Fix it in this order, and never skip to the
+  last one:
+  1. **SEPARATE THE GEOMETRY by 1–2 mm.** In a metric scene this is the only fix with no
+     view-angle artifacts. A shared plane is the cause; everything else treats the symptom.
+  2. `polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1` on the layer that must
+     win — ONLY where separation is genuinely impossible.
+  3. `logarithmicDepthBuffer` is a last resort: it costs roughly 50 % of frame rate. Leave it off.
+  Keep near/far within about 10⁴:1 (e.g. 0.1 / 1000); a huge ratio starves the buffer on its own.
+  - **NESTED elements need a STEP, not an offset.** A panel drawn inside a panel, a frame inside a
+    frame: give each one an offset that steps with its nesting DEPTH, or every member of the stack
+    lands on the same plane and the fix does nothing. Derive depth by sorting by area and counting
+    how many larger elements each one overlaps, so the smaller of any overlapping pair always
+    lands further out.
+  - A coplanar pair is INVISIBLE to console, count and framing checks: it renders, it is not an
+    error, and it only shows up in a LIVE ORBIT or a moving capture. If the subject has stacked or
+    inset faces, that is what has to be exercised.
 - `OrbitControls` damping 0.08, `autoRotate` DEFAULT OFF for gate captures (a rotating scene never
   settles → capture's frame-settle loop writes `console_clean:false`); autoRotate stays behind a
   toggle. `PerspectiveCamera` FOV 32–42
