@@ -21,6 +21,11 @@ Found overlays OVERRIDE the generic defaults below.
 ## Generic defaults (used ONLY when no overlay found)
 
 - three.js r0.160.0 via importmap (unpkg), single standalone HTML file.
+- **OFFLINE-FIRST (default)**: a threejs design vendors its own libraries (`vendor/three/` + a LOCAL
+  importmap `"three": "./vendor/three/three.module.js"`; addons under `vendor/three/addons/`;
+  lil-gui/BufferGeometryUtils vendored the same way). No run-time CDN. Verify no `http(s)://` CDN
+  reference survives in the shipped HTML/JS. Precedent + full spec: the repo's
+  `disenos/catalog/EXTERNAL-ASSETS.md` and `disenos/datacenter-hotspot-sinCDN/`.
 - **Voxel/blockout pass**: all static voxels in ONE `InstancedMesh` per color (shared
   `BoxGeometry(1,1,1)`, `setMatrixAt` + `instanceMatrix.needsUpdate = true`). Animated parts
   (fans, dampers, couplings) in SEPARATE `Group`s outside the InstancedMesh. Flat-color
@@ -88,6 +93,10 @@ Found overlays OVERRIDE the generic defaults below.
   is an evidence-hygiene defect to blind judges.
 - Camera occlusion: side features (linkages, brackets) need standoff from the silhouette to
   stay visible at the house az42 camera — check visibility at spec camera BEFORE gating.
+- **Differentiate co-located services by CROSS-SECTION / shape, not material alone**: two round
+  cylinders read as ONE system even with different materials and flow markers. (nave-3sistemas: a
+  round HVAC trunk beside the round compressed-air pipe failed ahu-and-duct-run 0.71; making the
+  trunk a RECTANGULAR box duct fixed it under both panel judges.)
 
 ## Pass ladder (P4a → P5a)
 

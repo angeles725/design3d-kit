@@ -207,6 +207,12 @@ cannot satisfy. All three happened in the cinemex run.
 - **When the SAME critical feature fails twice in a row: run THREE independent judges on that
   attempt and take the MAJORITY.** A judge costs ~5 min; a wasted attempt costs ~45. The arithmetic
   is not close.
+- **Escalate the FINAL verdict to a 2-judge (or 3-judge) blind PANEL when a feature has BOUNCED
+  across attempts** (passed then failed, or scored across the threshold), not only after N
+  same-feature failures. Single-judge variance at the margin is real (nave-3sistemas: luminaire-grid
+  swung 0.76↔0.55, ahu-and-duct-run 0.76↔0.71 across single judges; a 2-judge panel returned a stable
+  unanimous 0.79). Take the panel's consensus; a split panel is surfaced to the user, not silently
+  resolved.
 - Give the panel members different lenses where the feature allows it (does it READ? is it PRESENT
   at native resolution? does it match the spec's promise?) — three identical judges are one judge
   with extra steps.
@@ -339,6 +345,11 @@ Max 2 correction retries per pass; after the 3rd failed attempt (`failed(3)`) ST
 escalate with: the last review JSON, the capture(s), a one-paragraph diagnosis, and 2–3
 concrete options (relax which threshold and why / change approach / drop feature). Never
 lower a threshold or reinterpret a feature yourself.
+
+**After ANY source change during a correction, RE-CAPTURE and RE-GATE the WHOLE evidence set, never
+only the changed feature: a fresh judge re-scores untouched features too and a marginal PASS can
+flip.** (nave-3sistemas: luminaire-grid went PASS 0.76 → FAIL 0.55 across attempts with its geometry
+unchanged.)
 
 **LINEAGE RESET — the user-authorized escape from `failed(3)`** (first-class, not an exception:
 cinemex used four). When the user authorizes a reset instead of accepting a stop: (1) archive the
