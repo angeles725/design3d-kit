@@ -419,12 +419,22 @@ scratchpad-routing + name protection are what bound the growth.)
 **Capture cleanup (on gate close)**: delete superseded attempt PNGs/consoles and raw
 pre-rename capture duplicates; keep the passing attempt's PNG + ALL review JSONs.
 Tool: `node assets/capture-gc.mjs <design-dir|catalog-root> [--apply] [--dedup]` (closes the SKILL
-v1.8 DEFERRED `capture-gc` item). Dry-run by default; promotes the passing representative's review to
-the canonical `<slug>.review.json` and prunes superseded/suffixed frames, never a review JSON, and
-skips any asset lacking a canonical `<slug>.png`. `--dedup` ALSO prunes the passing attempt's PNG
-byte-twin (identical md5 to `<slug>.png`): safe because `gate-state.mjs` now accepts the promoted
-canonical `<slug>.{png,review.json}` as a pass witness for its declared pass (`hasPngWitness`, with a
-`canonical-witness` characterization test) — so the twin is redundant. Cache retrofit: after a
-`--dedup` sweep, `node assets/gate-state.mjs <design-dir> --write-cache` regenerates a missing
-`runs/progress.yaml` from the derived ladder (gated on a coherent derivation). First applied
-2026-08-07 on nave-panccadia equipos (18 promoted, then --dedup 18 twins / 7.39 MB, 18/18 gate-clean).
+v1.8 DEFERRED `capture-gc` item). Dry-run by default. PRUNE policy — EVIDENCE vs EPHEMERAL:
+(A) ALL png/console.json of **fail-attempt bases** (review present, verdict ≠ PASS) are prunable
+— "delete superseded attempt PNGs/consoles"; their review.jsons are always kept; gate-state derives
+passed state only from the PASS attempt's exact basename, so FAIL-attempt PNGs are not load-bearing.
+(B) Suffixed png of a **pass-attempt base** whose md5 == rep png md5 is a redundant byte-copy —
+prunable. Distinct-view frames (md5 ≠ rep) are EVIDENCE cited by the review — kept.
+(C) Frames with **no review owner** (no sibling review.json) are scratch — prunable.
+Never deletes: review.jsons, the passing rep png/console, distinct-view coverage frames, progress.yaml,
+*.md/*.yaml, subdirs. v1.14: also handles **full-ladder** design dirs (per-pass names
+`<pass>-attempt<N>.png`, no `<slug>.png`) — same policy, PROMOTE step skipped. FLAT-CATALOG path
+unchanged. PROMOTE: copies passing rep's review to `<slug>.review.json` (additive, never overwrites).
+`--dedup` ALSO prunes the flat-catalog passing rep's unsuffixed PNG (byte-twin of `<slug>.png`):
+safe because `gate-state.mjs` accepts the promoted canonical `<slug>.{png,review.json}` as pass
+witness (`hasPngWitness`, `canonical-witness` characterization test). Cache retrofit: after a `--dedup`
+sweep, `node assets/gate-state.mjs <design-dir> --write-cache` regenerates a missing `runs/progress.yaml`.
+First applied 2026-08-07 on nave-panccadia equipos (18 promoted, 18 byte-twins / 7.39 MB freed,
+18/18 gate-clean). Repo-wide sweep: `bash assets/toolbelt/sweep-captures.sh [<repo-root>]` — census
+all design groups, reports PRUNABLE dirs + total MB freeable, fail-loud zero-census guard (mirrors
+sweep-retros.sh); SessionStart hook: `assets/toolbelt/sweep-captures-hook.sh`.
