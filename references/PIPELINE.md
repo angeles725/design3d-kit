@@ -20,7 +20,7 @@ P6 FINAL REVIEW ─ P7 DELIVERY KIT ─ P8 RETRO
 | P4a/P4b | Blockout: silhouette + proportions + part massing only | spec | blockout build | full gate (GATES.md) | modeler role | session |
 | P5a/P5b | Build-out passes (track file defines the ladder), each pass gate-locked | prior pass | per-pass builds | full gate per pass | modeler/texturer roles | session |
 | P6 | Final blind review vs references: critical features + global score | all screenshots, spec | final review JSON | full gate, ≤2 fix loops | blind reviewer agent | sonnet |
-| P7 | Delivery kit (track-specific) + `runs/REPORT.md` (per-pass table: score, attempts, screenshot link) + **library extraction** (newly gated reusable mechanisms → `library/` per LIBRARY.md; an unpreserved mechanism is a rebuild tax on the next design) | passed build | kit files, REPORT.md, library rows | files exist | inline | session |
+| P7 | Delivery kit (track-specific) + `runs/REPORT.md` (per-pass table: score, attempts, screenshot link) + **library extraction** (newly gated reusable mechanisms → `library/` per LIBRARY.md; an unpreserved mechanism is a rebuild tax on the next design) + **self-contained offline build** for modular threejs designs (`research/tools/build-offline.mjs` → a `dist/index.html` that opens by double-click, offline; verify visual parity vs the gate capture) | passed build | kit files, REPORT.md, library rows | files exist | inline | session |
 | P8 | Retro + LEARNINGS **staged** (never appended to §Active) + proposed kit deltas | run history | retro file (`review-status: pending`), staged ledger rows | — | inline | session |
 
 ## Pass state machine (pass lock)

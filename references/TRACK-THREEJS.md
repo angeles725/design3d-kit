@@ -1,6 +1,7 @@
 # TRACK-THREEJS — Three.js track adapter
 
-Single-file standalone HTML prototypes (importmap, no bundler). Blockout = voxel massing pass;
+Modular `src/` prototypes (importmap at dev time; esbuild only at P7 to emit the offline
+single-file). Blockout = voxel massing pass;
 build-out = parametric/PBR ladder. Reuse the `threejs-*` reference skills for technique — link,
 never duplicate.
 
@@ -20,7 +21,15 @@ Found overlays OVERRIDE the generic defaults below.
 
 ## Generic defaults (used ONLY when no overlay found)
 
-- three.js r0.160.0 via importmap (unpkg), single standalone HTML file.
+- three.js r0.160.0, vendored (no CDN). NEW designs are authored MODULAR, not single-file.
+- **MODULAR `src/` (default for NEW designs)**: an `index.html` shell + a `main.js` entry that imports
+  a `src/**` tree split by responsibility — `scene/` (geometry, one file per subsystem), `sim/`
+  (physics/logic, kept OUT of the view layer), `dashboard/`, `controllers/`, `dev/` (hideable
+  lil-gui). Dev previews and gates run over the harness http server — ES-module files do NOT load
+  from `file://`, so a modular design never opens by double-click DURING the run; only its P7 `dist/`
+  does (see §Delivery kit). Template precedent: `disenos/nave-3sistemas/`. The legacy single-file
+  monoliths (~129) are GRANDFATHERED — never migrate one wholesale; it modularizes only if a real
+  change forces a rewrite anyway.
 - **OFFLINE-FIRST (default)**: a threejs design vendors its own libraries (`vendor/three/` + a LOCAL
   importmap `"three": "./vendor/three/three.module.js"`; addons under `vendor/three/addons/`;
   lil-gui/BufferGeometryUtils vendored the same way). No run-time CDN. Verify no `http(s)://` CDN
@@ -169,6 +178,7 @@ console-clean only"`. Never fake numbers.
 | 4K hero PNG | `capture.mjs` (DPR 4 supersample) |
 | Catalog thumbnail | same harness, overlay's fixed framing if defined |
 | `.glb` | `research/tools/export-glb.mjs` (headless GLTFExporter via the page's QA hook), then glTF-Transform — MEASURE the optimized size; plain `optimize` measured WORSE on a CanvasTexture-dominated scene (cinemex 1.09→1.16 MB) and draco bought only 6% |
+| **Self-contained `dist/index.html`** (modular designs) | `research/tools/build-offline.mjs <design-dir>` — esbuild bundles `main.js` + `src/**` + vendored three into ONE inline-module HTML that opens by double-click over `file://`, ZERO network (`assertNoNetwork` fails loud on any surviving remote dep). MEASURE it (nave-3sistemas: 28.6 kB entry → 766.6 kB page, ~5 s). VERIFY visual parity vs the gate capture — the dist MIRRORS the gated modular source, is never a second source of truth, and is never hand-edited (regenerated every build). |
 | README row | append to the design folder's README table (overlay convention) |
 
 **Every harness P7 builds is a REPO TOOL** (`research/tools/`, next to probe/capture/preflight),
