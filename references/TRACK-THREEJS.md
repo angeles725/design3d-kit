@@ -58,6 +58,11 @@ Found overlays OVERRIDE the generic defaults below.
     > `brushed-stainless-recipe.md` was corrected on 2026-08-09; THIS file was not, so the dead
     > property kept being copied into new assets for a further day. When a fact is corrected, grep
     > the kit for every other place that states it.
+  - **Scene-vs-master rig**: a per-asset metal brightness calibration correct in the master may
+    read differently in the integrated scene (different IBL/exposure). Measure whether dark-metal is
+    SYSTEMIC (compare new post lum against an existing metal in the same scene) or ASSET-SPECIFIC. A
+    systemic problem requires a GLOBAL rig change that repaints ALL metals in the scene — surface it
+    to the user as a scene-level decision, not a single-asset fix.
   - **Painted sheet (casings, canopies, cabinets)** is a DIELECTRIC WITH A CLEAR LAYER:
     `metalness: 0` + `clearcoat ~0.9` + `clearcoatRoughness ~0.12` on a `MeshPhysicalMaterial`.
     Do NOT reach for an intermediate metalness to make paint look glossy — measured on the
@@ -117,7 +122,7 @@ Found overlays OVERRIDE the generic defaults below.
 | surface | CanvasTexture detail (fins, nameplates, dials) — draw, don't download | threejs-textures |
 | lighting-camera | rig per spec (`house-rig` or studio RectAreaLight variant), fog, composition: azimuth 40–45°, elevation 20–28° | threejs-lighting |
 | interaction-ui | spec `ui_controls`: toggles, raycast hotspots, DOM overlays | threejs-interaction |
-| optimization | draws: BatchedMesh/merge · tris: LOD/simplify/instanceColor; re-probe vs budget | threejs-fundamentals |
+| optimization | draws: BatchedMesh/merge · tris: LOD/simplify/instanceColor; re-probe vs budget. **Toggle-aware merge**: keep each TOGGLEABLE sub-group in its OWN merge pass — a merge that absorbs a toggleable group destroys the toggle's geometry (the button hides a group with no distinct geometry left) | threejs-fundamentals |
 
 ## QA commands (mechanical checks + capture) — verbatim
 

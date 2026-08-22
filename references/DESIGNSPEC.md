@@ -38,6 +38,10 @@ P3, and is the ONLY thing the blind reviewer sees besides screenshots. Template:
    `local_end`; never center it at an arbitrary transform. The P3 gate blocks structural
    passes while any appendage lacks this block (adapted from Object Sculptor,
    research/sources/design3d-skill/NOTES-object-sculptor.md).
+   **L-section uprights**: when spanning a shelf or beam to a SLOTTED-ANGLE (L-section) upright,
+   measure to the SHEET FACE of the nearest leg, not to the L's bounding box — the open quadrant
+   is inside the bbox but contacts no metal; a span to "post width" can float 20–35 mm clear.
+   Assert overlap DEPTH at both ends, measured from the sheet face.
 5. **3–5 critical features (hard max 5).** The features that make the object read as
    ITSELF (e.g. "two stacked barrels", "fin lattice reads as aluminum"). Each gets a threshold
    (default 0.75) and must pass INDEPENDENTLY — per-pass failure gates, chosen adversarially:
@@ -70,6 +74,11 @@ proceed with stated assumptions recorded in `references[]`. `reject` (ambiguous 
 instead of object, subject dominated by hair/smoke/liquid) → request specific better input
 (front/side views, neutral background, close-ups) instead of guessing.
 
+**Video references**: extract and read frames at NATIVE RESOLUTION (via
+`research/tools/video-inspect.mjs` or equivalent) before authoring material calls — a
+contact-sheet thumbnail (~300 px) is insufficient for metal/colour decisions and can misread
+material identity (metalness, colour family) in a way that survives spec authoring and the P3 gate.
+
 ## Schema (field reference)
 
 See `assets/designspec.template.yaml` — every field annotated. Required top-level keys:
@@ -78,13 +87,20 @@ See `assets/designspec.template.yaml` — every field annotated. Required top-le
 `camera`, `lighting`. Optional: `important_features` (≤3); `gate_passes` (a declared gate
 pass-subset — a YAML list, inline `[materials]` or a block list — for a flat-catalog asset that
 closes on a subset of the ladder instead of the full 8-pass climb; `gate-state.mjs` derives exactly
-this subset in canonical order, PIPELINE.md §Triage flat-catalog + GATES.md §Verdict);
+this subset in canonical order, PIPELINE.md §Triage flat-catalog + GATES.md §Verdict;
+**MUST be a top-level key — never nested under `quality_contract:` or any other parent**:
+`gate-state.mjs` reads `spec.gate_passes` at the top level; a nested value is invisible and
+the asset never closes green — it derives the full 8-pass ladder with all passes `locked`);
 `colorTarget` (OPTIONAL objective material-read anchor — `{srgb: [R,G,B], deltaE00Max: N, crop: "WxH+X+Y"}`)
 replacing the reviewer's subjective "reads as the right material" guess with a CIEDE2000 measurement:
 `material-color-probe.mjs` measures the render crop's mean sRGB, records `mechanical.color_delta_e00`,
 and `gate-state.mjs` enforces `dE00 <= deltaE00Max` on the materials/surface PASS (research/threejs-block53;
 the target `srgb` is the RENDERED value, not the albedo hex — it differs after ACES tonemapping; seed
-`deltaE00Max` ~6 for "reads as the right material", tighter for a hero). Per-node:
+`deltaE00Max` ~6 for "reads as the right material", tighter for a hero).
+**Source rule**: when a source photo or video exists, anchor `srgb` to a geometry-anchored crop of
+THAT SOURCE — a render-derived target makes the gate tautological (certifies the render matches
+itself, not the subject); the golden-render fallback is for genuinely unavailable source only and
+must be labelled REGRESSION DETECTOR in both the spec and the review. Per-node:
 `attachment` (required for appendages), `closure` (required for opposed/linked moving parts).
 Track-specific: `ui_controls`, `blockout_scale` (threejs — the voxel ratio, e.g. `"1 voxel = 0.1 m"`,
 drives the `// SCALE:` comment), `render` (blender: engine, samples).

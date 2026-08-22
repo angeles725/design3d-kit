@@ -52,6 +52,11 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      AABB pairs) is ADVISORY, not a hard fail: it REPORTS candidates for the modeler (a bolt
      legitimately sits inside a housing's AABB; an L-shape shares a high AABB IoU with no real
      overlap) and NEVER mutates the scene.
+     **Scene-integration framing caveat**: `fullyVisible` checks whether the subject's AABB corners
+     project inside the NDC viewport — it does NOT detect physical occlusion by non-subject geometry.
+     A scene-integration capture can return `framing: ok` while showing a blank wall (subject projects
+     inside frame but a host wall blocks the camera-to-subject ray). Extend `VIEW_HIDE` to include
+     EVERY opaque layer between the camera and the subject, not just the subject's own label sprites.
    - blender: scene stats (polys, object count) ≤ budget via MCP scene-inspection code.
    - **Invariant tests** (when the design has a test suite): run it; a red suite BLOCKS the gate.
      Scope them per §Test-vs-render jurisdiction below — deterministic invariants only. Record it in
@@ -283,6 +288,10 @@ PASS — the reviewer still confirms IDENTITY (right shape/part), the SCRIPT jud
 PASS that declares the threshold but records no `color_delta_e00` is a contract violation (fail loud, like a
 missing `global_min`), never a silent skip. The target is the RENDERED value (differs from the albedo hex
 after ACES tonemapping); it may be authored from a golden render's crop when no photo exists.
+**Source rule**: when a source photo or video exists, anchor `srgb` to a geometry-anchored crop
+of THAT SOURCE — a render-derived target makes the gate tautological (certifies the render
+matches itself, not the subject); the golden-render fallback is for genuinely unavailable source
+only and must be labelled REGRESSION DETECTOR in both the spec and the review.
 
 **Budget-headroom feedback** (P6 only): if final utilization is <50% of `perf_budget` AND any
 layer <0.8, the P6 review must state whether spending headroom would raise the weak layer —

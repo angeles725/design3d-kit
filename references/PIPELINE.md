@@ -125,6 +125,11 @@ about to change the text visible in 10 of them.)
     and extracts nothing. It still owes a library-extraction pass: run the P7 library-extraction
     step (below) PER GATED ASSET (or once at run end over all gated assets), else gate-passed
     reusables are never extracted (LIBRARY.md exists to stop exactly that rebuild tax).
+  - **CAD-placeholder pre-check** (generated-scene integration): before placing a new master into a
+    generated scene, check whether the generator's CAD layer or furniture dictionary already carries
+    a placeholder for the same object. Guard with a geometric filter (project furniture footprints
+    against the new asset's footprint + lateral offset) that FAILS LOUD if it suppresses zero
+    matches — a zero match means the guard measured nothing (echoes GATES.md §Instrument corollaries).
 - AUTO-ESCALATE standard→heavy when P2 reveals ≥3 assets or a full scene: announce
   (`spec shows N assets → escalating to heavy`) and continue. Ask ONLY if escalation crosses an
   explicit user cost/scope limit.
