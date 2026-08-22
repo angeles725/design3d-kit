@@ -35,6 +35,23 @@ Found overlays OVERRIDE the generic defaults below.
   lil-gui/BufferGeometryUtils vendored the same way). No run-time CDN. Verify no `http(s)://` CDN
   reference survives in the shipped HTML/JS. Precedent + full spec: the repo's
   `disenos/catalog/EXTERNAL-ASSETS.md` and `disenos/datacenter-hotspot-sinCDN/`.
+- **CAD→3D two-phase architecture (reconstruction → dashboard)**: when a deliverable reconstructs a CAD
+  source (DWG/DXF) and is meant to become an interactive dashboard, treat it as TWO phases and keep the
+  certified DATA layer (the extracted JSON) DECOUPLED from the render layer so Phase 2 is not a rewrite.
+  - **Phase 1 — reconstruction (this kit's default):** vanilla three.js, modular `src/` + offline
+    single-file `dist/`. Offline here is a DEV/RECONSTRUCTION constraint (double-click review,
+    reproducible gate), NOT a product constraint. Goal = certified geometry from the CAD.
+  - **Phase 2 — product:** React + React Three Fiber, online. R3F IS three.js underneath, so Phase-1
+    geometry (`Shape`/`ExtrudeGeometry`, merged/instanced buffers) reuses via `<primitive>`; only the
+    UI/state shell is rewritten. The JSON goes by PROP / API, never bundled.
+  - **R3F track gotchas (Phase 2):** (a) per-frame animation lives in `useFrame` on the three objects
+    (`THREE.MathUtils.damp`, state read from `userData`), NEVER React state — driving N marks through
+    state re-renders React every frame; (b) drei `<Html>` for labels (crisp DOM, no canvas sprites);
+    (c) in Next.js an R3F canvas needs `dynamic(() => import(...), { ssr:false })` AND an explicit
+    parent height — `height:100%` under a zero-height parent collapses to a blank canvas with NO error;
+    (d) an R3F component CANNOT preview as a Claude artifact (the artifact CSP blocks esm.sh and R3F is
+    not in the sandbox) — ship a browser-only esm.sh + Babel HTML preview, not an artifact.
+  Provenance: `disenos/COB-IM2/runs/2026-08-21-architecture-retro.md` + `-r3f-phase2-retro.md`.
 - **Voxel/blockout pass**: all static voxels in ONE `InstancedMesh` per color (shared
   `BoxGeometry(1,1,1)`, `setMatrixAt` + `instanceMatrix.needsUpdate = true`). Animated parts
   (fans, dampers, couplings) in SEPARATE `Group`s outside the InstancedMesh. Flat-color

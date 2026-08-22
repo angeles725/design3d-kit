@@ -130,6 +130,23 @@ about to change the text visible in 10 of them.)
     a placeholder for the same object. Guard with a geometric filter (project furniture footprints
     against the new asset's footprint + lateral offset) that FAILS LOUD if it suppresses zero
     matches — a zero match means the guard measured nothing (echoes GATES.md §Instrument corollaries).
+- **CAD→3D intake ranking (DWG/DXF source)** — reconstructing from a CAD file has TWO routes; always
+  prefer Route 1.
+  - **Route 1 (default, certified):** read the real entities — DWG→DXF via a reader ladder (system
+    libredwg `dwg2dxf` → ODA File Converter → compile libredwg from source) → `ezdxf`. Coordinates,
+    units, elevations, layers, sections, and multi-sheet co-registration come from the drawing (sheets
+    sharing one CAD frame co-register by pure TRANSLATION, verified by content overlap — no scale/rot).
+    Cross-validate the converter cheaply (`dwgread -O JSON` filtered to `entmode==2`, or ODA) — all
+    faithful readers agree on the modelspace payload.
+  - **Route 2 (last resort, everything `[INFER]`):** computer vision on a raster (colour masks →
+    `HoughLinesP` → connected-components; SIFT/Lowe/RANSAC to co-register sheets). Use ONLY when no
+    reader can run AND a sufficient-resolution raster exists — a DWG's EMBEDDED thumbnail (~256×115)
+    does NOT qualify. CV INVENTS scale, elevation, semantics, and co-registration (a SIFT similarity
+    reports a spurious scale/rotation the CAD does not contain — that is raster px/m differences, not
+    geometry). Never present CV lengths as measured; expose a scale control and recalibrate from ONE
+    known real dimension. "Sheet won't register with confidence" is a CV-only failure, not real ambiguity.
+  Provenance: `disenos/COB-IM2/runs/2026-08-21-cv-fallback-retro.md` + `-cv-coregistration-retro.md`;
+  reader-fidelity evidence in `~/investigacion/COB-IM2/corpus` B12.
 - AUTO-ESCALATE standard→heavy when P2 reveals ≥3 assets or a full scene: announce
   (`spec shows N assets → escalating to heavy`) and continue. Ask ONLY if escalation crosses an
   explicit user cost/scope limit.
