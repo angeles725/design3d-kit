@@ -92,6 +92,24 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      rule requires — canvas textures, sprites, DOM raster in `--page` mode, full gate DPR —
      pixel-compared clean against SwiftShader per class. Record that pilot as the graduation
      evidence and lift the demotion in `capture.mjs`; until it passes, the flag stays experimental.
+   - **QUALIFY a renderer BY TECHNIQUE, not just by content class — and some techniques are
+     UNVERIFIABLE by this pipeline.** A fix that changes only what is DRAWN and adds NO geometry —
+     stencil/section caps, a shader-only cover, a render-state toggle — is invisible to BOTH the
+     headless visual gate (a downscaled render may not resolve it) AND every topology gate
+     (`open-edge-cap`, `checkFusedMeshClosed`, `signedVolume` — they read geometry the technique never
+     changes). Such a technique goes SILENTLY GREEN while the defect persists. So: (a) mark
+     stencil/render-only techniques as **"needs a debug-mode capture or a pixel readback to gate"** —
+     they are not gate-verifiable by the default evidence set; and (b) **PREFER A GEOMETRIC solution
+     when one exists** (a real cap face over a stencil cap), because geometry IS verifiable by the
+     gates already in the kit. (Revisor COB-IM2 WU-L4-B1, 2026-08-27: system-3d stencil caps for the
+     see-through duct ends — a render-only technique — could not be gated; a geometric cap can.)
+   - **To verify a RENDER-only change did something, DIFF before/after on the SAME renderer.** Do not
+     interpret pixels or trust a pre-look — capture pre-change and post-change at the SAME camera on the
+     SAME renderer and compare: **byte-identical (AE=0) proves a NO-OP**, regardless of how either frame
+     looks. (This is how WU-L4-B1's stencil caps were proven a no-op — pre-B1 `git show` vs post-B1, AE=0
+     — without any pixel judgement.) Note the corollary to the renderer-qualification rule above:
+     SwiftShader vs GPU differed ~152k px on the SAME file (AA/wireframe), so a before/after diff is only
+     valid WITHIN one renderer, never across a driver switch.
    - LOOK-DEV EVIDENCE — materials, lighting-camera and P6 REQUIRE the capture set, driven via
      URL params (`?view=...`; threejs: capture.mjs `--url-suffix`): `neutral` + `grazing`
      (low-angle close-up exposing smooth-plastic highlights, weak normals, tiling) +
