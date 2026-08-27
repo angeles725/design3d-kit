@@ -56,6 +56,53 @@ export function bulgeToArc(p0, p1, bulge, segments = 12) {
   return { center: [cx, cy, z], radius, includedAngleDeg: theta * 180 / Math.PI, ccw: bulge > 0, points: pts };
 }
 
+// --- B-spline / NURBS evaluation (De Boor) -------------------------------------------------------------
+// DXF SPLINE = control points (10/20/30), a knot vector (40×), optional rational weights (41×), degree (71).
+// Curved duct/pipe centerlines are drawn as SPLINE; without this they were silently dropped and never voxelized.
+// Pure-JS De Boor, no deps. Rational splines evaluated in homogeneous coords [x·w,y·w,z·w,w], then projected.
+function clampedUniformKnots(n, p) {                 // fallback when the DXF knot vector is absent/malformed
+  const m = n + p + 1, U = new Array(m + 1);
+  for (let i = 0; i <= p; i++) U[i] = 0;
+  for (let i = m - p; i <= m; i++) U[i] = 1;
+  for (let j = 1; j <= n - p; j++) U[p + j] = j / (n - p + 1);
+  return U;
+}
+function findSpan(n, p, u, U) {
+  if (u >= U[n + 1]) return n;
+  if (u <= U[p]) return p;
+  let low = p, high = n + 1, mid = (low + high) >> 1;
+  while (u < U[mid] || u >= U[mid + 1]) { if (u < U[mid]) high = mid; else low = mid; mid = (low + high) >> 1; }
+  return mid;
+}
+function deBoorAt(k, u, p, U, Pw) {                   // Pw = homogeneous control points
+  const d = [];
+  for (let j = 0; j <= p; j++) d[j] = Pw[k - p + j].slice();
+  for (let r = 1; r <= p; r++)
+    for (let j = p; j >= r; j--) {
+      const i = k - p + j, denom = U[i + p - r + 1] - U[i], a = denom === 0 ? 0 : (u - U[i]) / denom;
+      for (let c = 0; c < 4; c++) d[j][c] = (1 - a) * d[j - 1][c] + a * d[j][c];
+    }
+  return d[p];
+}
+// Sample a DXF SPLINE into `segments+1` points. Robust: guards degree/knot mismatch; if it can't be evaluated
+// as a B-spline it falls back to the control polygon (never a silent drop).
+export function sampleSpline({ degree = 3, controlPoints = [], knots = null, weights = null } = {}, segments = 32) {
+  const P = controlPoints, n = P.length - 1, p = Math.min(degree, n < 0 ? 0 : n);
+  const poly = () => P.map(q => [q[0], q[1], q[2] ?? 0]);
+  if (P.length < 2 || n < p || p < 1) return poly();                 // too few CPs for the degree → polygon
+  const expected = n + p + 2;
+  const U = (Array.isArray(knots) && knots.length === expected) ? knots : clampedUniformKnots(n, p);
+  const W = (Array.isArray(weights) && weights.length === P.length) ? weights : P.map(() => 1);
+  const Pw = P.map((q, i) => [q[0] * W[i], q[1] * W[i], (q[2] ?? 0) * W[i], W[i]]);
+  const u0 = U[p], u1 = U[n + 1], out = [];
+  for (let s = 0; s <= segments; s++) {
+    const u = u0 + (u1 - u0) * (s / segments);
+    const c = deBoorAt(findSpan(n, p, u, U), u, p, U, Pw);
+    out.push([c[0] / c[3], c[1] / c[3], c[2] / c[3]]);
+  }
+  return out;
+}
+
 // split the pair stream into entity records (each: {type, pairs:[]}), respecting SECTION/ENDSEC/EOF/SEQEND.
 function entities(pairs) {
   const ents = []; let cur = null;
@@ -119,6 +166,7 @@ function collectPoints(e) {
   else if (e.type === 'LWPOLYLINE') { let x = null; for (const p of e.pairs) { if (p.code === 10) x = num(p.value); else if (p.code === 20 && x != null) { pts.push([x, num(p.value), 0]); x = null; } } }
   else if (e.type === 'ARC' || e.type === 'CIRCLE') { const c = [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')], r = num(first(e, 40)); pts.push([c[0] - r, c[1] - r, c[2]], [c[0] + r, c[1] + r, c[2]]); }
   else if (e.type === 'POINT') pts.push([num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')]);
+  else if (e.type === 'SPLINE') { let x = null; for (const p of e.pairs) { if (p.code === 10) x = num(p.value); else if (p.code === 20 && x != null) { pts.push([x, num(p.value), 0]); x = null; } } }
   return pts.filter(p => p.every(Number.isFinite));
 }
 // scan the flat entity list: pull BLOCK…ENDBLK definitions (name → footprint size), return the MAIN entities.
@@ -167,6 +215,22 @@ export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
           majorEnd: [num(first(e, 11)), num(first(e, 21)), num(first(e, 31) ?? '0')], // major-axis endpoint RELATIVE to center
           ratio: num(first(e, 40)), startParam: num(first(e, 41) ?? '0'), endParam: num(first(e, 42) ?? String(2 * Math.PI)), source: src(e) });
         break;
+      case 'SPLINE': {
+        const degree = parseInt(first(e, 71) || '3', 10);
+        const flags = parseInt(first(e, 70) || '0', 10);
+        const knots = [], weights = [], cps = []; let v = null;
+        for (const pr of e.pairs) {                        // codes interleave: 40 knots, 41 weights, 10/20/30 CPs
+          if (pr.code === 40) knots.push(num(pr.value));
+          else if (pr.code === 41) weights.push(num(pr.value));
+          else if (pr.code === 10) { if (v) cps.push(v); v = [num(pr.value), 0, 0]; }
+          else if (pr.code === 20 && v) v[1] = num(pr.value);
+          else if (pr.code === 30 && v) v[2] = num(pr.value);
+        }
+        if (v) cps.push(v);
+        geometry.push({ kind: 'spline', layer: layerOf(e), degree, closed: (flags & 1) === 1,
+          controlPoints: cps, knots, weights: weights.length === cps.length ? weights : null, source: src(e) });
+        break;
+      }
       case 'LWPOLYLINE': {
         const flags = parseInt(first(e, 70) || '0', 10);
         const verts = []; let v = null;
@@ -247,6 +311,7 @@ export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
     if (g.vertices) return g.vertices.map(v => v.point);
     if (g.kind === 'circle') { const [x, y, z] = g.center, r = g.radius; return [[x - r, y - r, z], [x + r, y + r, z]]; }
     if (g.kind === 'ellipse') { const [x, y, z] = g.center, m = Math.hypot(g.majorEnd[0], g.majorEnd[1]); return [[x - m, y - m, z], [x + m, y + m, z]]; }
+    if (g.kind === 'spline') return g.controlPoints || [];   // control polygon bounds the curve (convex hull)
     return [];
   };
   // Only FABRIC layers may bound the room — annotation layers (cotas/text/grid/…) scatter across the sheet
@@ -303,6 +368,11 @@ export function geometryToPolylines(sg, { arcSegments = 12 } = {}) {
         const t = t0 + (t1 - t0) * (i / n), ex = major * Math.cos(t), ey = minor * Math.sin(t);
         pts.push([cx + ex * Math.cos(ang) - ey * Math.sin(ang), cy + ex * Math.sin(ang) + ey * Math.cos(ang), cz]);
       }
+      lines.push(pts);
+    } else if (g.kind === 'spline') {
+      const segs = Math.max(16, (g.controlPoints.length - 1) * arcSegments);
+      const pts = sampleSpline(g, segs);
+      if (g.closed && pts.length) pts.push(pts[0]);
       lines.push(pts);
     }
   }
