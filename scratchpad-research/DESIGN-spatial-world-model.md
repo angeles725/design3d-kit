@@ -120,3 +120,46 @@ decision is grounded in the real occupied state, not its own stale mental model.
   SPATIAL-ENGINE holds → ADOPT S2 as a core delta. If A2 is ALSO null (both pass) → S2 becomes
   "optional, density-gated" (engage only above an object-count/occupancy threshold), not a core rule.
   A2 SPATIAL dispatched to creador2; NAIVE-at-density run still needed to complete the A/B (flagged to i1).
+
+## 9. Second-pass enrichments (from a full re-read of investigacion.md §11, lines 7182-8110)
+Concrete details the first-pass skeleton missed; each refines a section above.
+
+- **9a. Ports carry a DIRECTION, not just a position (refines §2).** Each port = `{position:[lx,ly,lz],
+  direction:[dx,dy,dz]}` (unit vector, e.g. `[1,0,0]` = faces +X). Connection/flow orientation and the
+  object quaternion derive from directions via `Quaternion.setFromUnitVectors(A,B)` — never authored Euler.
+  The AI says a direction; the engine computes the quaternion.
+
+- **9b. Semantic occupancy grid (refines §3.2).** The tri-state {UNKNOWN,FREE,OCCUPIED} is the MINIMUM. The
+  doc proposes a richer per-cell code enum: `0 free · 1 occupied · 2 clearance · 3 reserved · 4 structure ·
+  5 HVAC · 6 piping · …`. Adopt the semantic enum as an OPTIONAL extension — it lets a query distinguish
+  "reserved by another agent" from "solid structure" from "someone's clearance envelope", which the bare
+  tri-state cannot. Still deterministic (set from typed volumes), still no probabilistic log-odds.
+
+- **9c. Two op surfaces, not one (refines §4).** Split the placement API into:
+  - QUERY ops (read-only "senses" — the AI's perception): `LOOK_AT(pos)`, `WHAT_IS_HERE(pos)`,
+    `DISTANCE_TO(obj)`, `NEAREST_OBJECT(pos)`, `IS_SPACE_FREE(box)`, `OBJECTS_WITHIN(radius)`,
+    `CAN_PLACE(asset,pose)`, `FIND_FREE_SPACE(bounds)`, `PATH_FREE(start,end)`, `WHAT_IS_ABOVE/BELOW(obj)`,
+    `CONNECTED_TO(obj)`. These let the AI interrogate the world before acting instead of imagining it.
+  - MUTATION ops (transactional, from §4): place*/connectPorts/routePipe/commit/rollback.
+
+- **9d. routePipe takes a constraint set, not a path (refines §4).** The AI never draws the polyline. It calls
+  `connect(AHU-01.SUPPLY, VAV-04.INLET, {ceiling_clearance>=200mm, wall_clearance>=100mm, max_bends=5,
+  no_collision=true, orthogonal_preference=true})`; inv3's A* duct-router computes XYZ. AI works in relations,
+  the solver works in coordinates.
+
+- **9e. Structured rejection report = the compiler-oracle's output contract (refines §1).** On REJECT the
+  engine returns a typed report, never a silent move, e.g.
+  `{rejected:(x,y,z), reason:"occupied", occupied_by:"AHU-01", occupied_volume:{x:[9,11],y:[8.5,11.5],z:[0,2.4]}}`.
+  This is what the AI reads to fix the spec — and (bonus) it is exactly the shape our verify.mjs violations
+  already emit, so the verifier IS a reference implementation of the oracle's report.
+
+- **9f. Multi-agent spatial reservations/locks (refines §4).** `ReserveSpace(bbox)` + a spatial lock so two
+  agents can't claim the same zone: Agent A → reserved, Agent B → denied. Directly relevant since design3d may
+  run parallel discipline agents (Architect / HVAC / Piping / Electrical / Structural) — the same pattern the
+  four of us are using to avoid collisions. Reservation is a first-class occupancy code (9b: `3 reserved`).
+
+- **9g. Spatial-Intelligence rubric category (feeds S5 / i1's GATES merge).** Proposed sub-weights for a new
+  "Spatial Intelligence" gate category: Collisions 25% · Clearances 20% · Coordinates/frames 15% ·
+  Connectivity 15% · Orientations 10% · Routing 10% · Duplicates/overlap 5%. HARD rule: any CRITICAL
+  collision caps the whole asset's score at 7.9 regardless of visual/material/lighting scores (a pipe through
+  an AHU cannot score ≥8). Hand this to i1 to merge with the 3-review/HARD-FAILS GATES delta.
