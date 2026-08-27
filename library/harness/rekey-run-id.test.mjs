@@ -82,4 +82,28 @@ t('sample subset limits the check; runs with no endpoints are skipped (nothing a
   assert.equal(noEnds.shared, 1); assert.equal(noEnds.checked, 0); assert.equal(noEnds.ok, true); // skipped, nothing asserted
 });
 
+t('verdict is NOT binary — partial (overlap-but-diverge) is the dangerous case, distinct from none-match (@3D)', () => {
+  const A = [
+    { id: 'T1', p0: [0,0,0], p1: [10,0,0] },   // trunk — two producers agree here
+    { id: 'B1', p0: [2,0,0], p1: [2,3,0] },     // branch — they diverge here
+    { id: 'S1', p0: [5,0,0], p1: [5,0.4,0] },   // small — diverge
+  ];
+  // all-match: same producer / convergent
+  assert.equal(validateRunIdentityByGeometry(A, A, { posTol: 0.05 }).verdict, 'all-match');
+  // partial: trunk matches, branch+small are different runs under the same name -> the false-1:1 trap
+  const Bset = [
+    { id: 'T1', p0: [0,0,0], p1: [10,0,0] },    // agrees
+    { id: 'B1', p0: [40,0,0], p1: [40,3,0] },   // different run, same name
+    { id: 'S1', p0: [55,0,0], p1: [55,0.4,0] }, // different run, same name
+  ];
+  const partial = validateRunIdentityByGeometry(A, Bset, { posTol: 0.05 });
+  assert.equal(partial.verdict, 'partial');     // overlap-but-diverge — gate can look healthy and not be
+  assert.equal(partial.matched, 1); assert.equal(partial.mismatches.length, 2); assert.equal(partial.ok, false);
+  // none-match: every shared id is a different run -> not a naming problem, different producers
+  const allDiff = A.map(r => ({ id: r.id, p0: [r.p0[0]+50, r.p0[1], r.p0[2]], p1: [r.p1[0]+50, r.p1[1], r.p1[2]] }));
+  assert.equal(validateRunIdentityByGeometry(A, allDiff, { posTol: 0.05 }).verdict, 'none-match');
+  // none-checked: nothing comparable
+  assert.equal(validateRunIdentityByGeometry([{ id: 'X' }], [{ id: 'X' }], { posTol: 0.05 }).verdict, 'none-checked');
+});
+
 console.log(`\n${pass}/${pass} rekey-run-id tests green`);
