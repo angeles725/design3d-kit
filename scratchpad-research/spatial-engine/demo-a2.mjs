@@ -2,9 +2,9 @@
 // 6 pipes, 10x7 room) to a verify.mjs PASS — proving DESIGN §2-§5 (S2) is implementable, not just described.
 // Run:  node demo-a2.mjs > a2-engine-solution.json  &&  node ../exercise-A1/verify.mjs a2-engine-solution.json
 import { SpatialEngine } from './spatial-engine.mjs';
+import { routeReference } from './router.mjs';
 
 const ROOM = [10, 7, 4];
-const ZTOP = 3.5; // route pipes over the top (all equipment <= z 2) — deterministic clear-of-bodies router
 
 // A2 instance: {id,size,clearance?} + ports (local offsets) + pipe connections
 const OBJS = [
@@ -46,7 +46,7 @@ const order = [...OBJS].sort((a, b) =>
 
 const log = [];
 for (const o of order) {
-  const r = eng.place(o);
+  const r = eng.place({ ...o, ports: PORTS[o.id] }); // ports passed so canPlace enforces port-access
   log.push(r.ok ? `PLACE ${o.id} -> [${r.center}]` : `REJECT ${o.id}: ${JSON.stringify(r.report)}`);
   if (!r.ok) { console.error(log.join('\n')); process.exit(1); }
 }
@@ -54,7 +54,12 @@ for (const o of order) {
 const wp = (ref) => { const [id, p] = ref.split('.'); return eng.worldPort(id, p, PORTS); };
 const pipes = PIPES.map(([id, from, to]) => {
   const A = wp(from), B = wp(to);
-  return { id, dn: 150, from, to, polyline: [A, [A[0], A[1], ZTOP], [B[0], B[1], ZTOP], B] };
+  const [fromId] = from.split('.'), [toId] = to.split('.');
+  // route around non-connected bodies+clearances; fall back to physical-only if clearance-blocking has no path
+  let poly = routeReference(ROOM, eng.committed, A, B, { ownerIds: [fromId, toId], h: 0.25, blockClearance: true })
+          || routeReference(ROOM, eng.committed, A, B, { ownerIds: [fromId, toId], h: 0.25, blockClearance: false });
+  if (!poly) { log.push(`ROUTE-FAIL ${id}`); poly = [A, B]; }
+  return { id, dn: 150, from, to, polyline: poly };
 });
 
 const scene = {

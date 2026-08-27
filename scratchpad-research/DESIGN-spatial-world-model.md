@@ -202,3 +202,13 @@ Concrete details the first-pass skeleton missed; each refines a section above.
     where each object's pose is a function of previously-placed objects, corrected by program-space search
     (no LLM in the correction loop). This is the strongest external validation that the imperative +
     deterministic-correction architecture is sound, not just intuitive.
+
+- **9i. PORT-ACCESS clearance (refines §4 canPlace — discovered by the reference implementation).** Building
+  the runnable engine surfaced a gap the design missed: a layout can be physical-body-clean AND service-
+  clearance-clean yet still UNROUTABLE, because an object's PORT is jammed flat against a neighbour's face
+  (e.g. a pump's suction port placed against a chiller — the pipe to it would have to pass through the
+  chiller). Fix: `canPlace` must ALSO require a small free APPROACH stub (~0.35 m) in front of every port
+  along its outward normal, free of committed bodies. Add `port-access-blocked` to the rejection reasons.
+  Evidence: spatial-engine reference impl — without this check the demo routes with 1 HARD
+  pipe-through-equipment; with it, the engine re-places port-bearing objects into accessible slots and the
+  scene routes clean (PASS 9.5). Placement must consider PORT ACCESS, not only body + clearance collision.

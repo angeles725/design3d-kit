@@ -56,6 +56,22 @@ export class SpatialEngine {
         if (this._intersects(ownClr, this._aabb(c)))
           return { ok: false, report: { rejected: center, reason: 'own-clearance-blocked', id: obj.id, blocked_by: c.id } };
     }
+    // PORT-ACCESS (design refinement found by the prototype): every port must have free approach space,
+    // else a body/clearance-clean layout is still UNROUTABLE (a pump's suction jammed against a chiller face).
+    if (obj.ports) {
+      const STUB = 0.35;
+      for (const [name, off] of Object.entries(obj.ports)) {
+        const world = [center[0] + off[0], center[1] + off[1], center[2] + off[2]];
+        let axis = 0; for (let i = 1; i < 3; i++) if (Math.abs(off[i]) > Math.abs(off[axis])) axis = i;
+        const dir = Math.sign(off[axis]) || 1;
+        const approach = [...world]; approach[axis] += dir * STUB;
+        for (const c of this.committed) {
+          const b = this._aabb(c);
+          if (approach.every((v, i) => v >= b.lo[i] - EPS && v <= b.hi[i] + EPS))
+            return { ok: false, report: { rejected: center, reason: 'port-access-blocked', id: obj.id, port: name, blocked_by: c.id } };
+        }
+      }
+    }
     return { ok: true, report: { placed: center, id: obj.id } };
   }
 

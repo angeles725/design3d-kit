@@ -17,20 +17,27 @@ transactional placement engine (S2) is implementable with the exact geometry the
 ## Result (measured, reproducible)
 ```
 node demo-a2.mjs > a2-engine-solution.json          # op-log to stderr, scene to stdout
-node ../exercise-A1/verify.mjs a2-engine-solution.json
+node ../exercise-A1/verify.mjs a2-engine-solution.json   # -> PASS 9.5
 ```
-- **PLACEMENT: PASS 10/10** — all 12 objects placed, `hard_fails=0`, `soft_fails=0` (0 overlaps, 0 clearance
-  intrusions, all on floor, all in-room). This is the S2 core claim, PROVEN by running code, not prose.
-- **ROUTING: the demo's trivial "over-the-top" router leaves 1 HARD pipe-through-equipment in the packed
-  scene** → the full scene scores 7.9. This is HONEST and expected: it validates the design's claim that
-  routing must use inv3's A* `duct-router.mjs` (occupancy-aware), NOT a naive router. A trivial router is
-  fine in an open room but clips a neighbour when equipment is tightly packed.
+- **END-TO-END: PASS 9.5** — all 12 objects placed (0 overlaps, 0 clearance intrusions, all ports accessible),
+  all 6 pipes routed collision-free (0 pipe-through-equipment), 1 SOFT (one pipe grazes a foreign clearance —
+  exactly what inv3's clearance-weighted A* would avoid; the reference BFS router only avoids HARD bodies).
+  So spec→place→route→verify is a WORKING PROTOTYPE, proven by running code, not prose.
+- **PLACEMENT-ONLY: PASS 10/10** (strip pipes) — the S2 core claim in isolation.
+
+## DESIGN REFINEMENT discovered by building the prototype: PORT-ACCESS clearance
+The first router run FAILED (1 HARD): the engine had placed pump P-01 with its suction port jammed flat
+against AHU-02's face — a layout that is body-clean AND clearance-clean but UNROUTABLE (the pipe to that port
+must pass through AHU-02). Fix: `canPlace` now also requires a small free APPROACH stub in front of every port
+along its outward normal (spatial-engine.mjs, reason `port-access-blocked`). This is a genuine addition to
+DESIGN §4 — placement must consider PORT ACCESS, not just body + service clearance. With it, the engine
+re-placed the pumps into port-accessible slots and the scene routes clean.
 
 ## What this de-risks
-- S2 placement (reserve→validate→commit, volumes-not-points, structured rejection) is not hand-waving — a
-  ~110-line deterministic engine produces a verifier-clean 12-object layout.
-- It cleanly SEPARATES the two claims: PLACEMENT is solved by this engine; ROUTING is delegated to inv3's A*
-  (the demo's clash is the evidence that the delegation is necessary, not optional).
+- S2 placement (reserve→validate→commit, volumes-not-points, PORT-ACCESS, structured rejection) is not
+  hand-waving — a ~130-line deterministic engine produces a verifier-clean, ROUTABLE 12-object layout.
+- Two-tier routing is validated: the reference BFS avoids HARD clashes; inv3's A* `duct-router.mjs` is the
+  production router that also minimizes the SOFT clearance grazes (cost-weighted). Complementary, not duplicate.
 
 ## Battery cross-reference (single scorer, verify.mjs) — see exercise-*/RESULTS.md
 | exercise | regime | naive | engine/method | finding |
