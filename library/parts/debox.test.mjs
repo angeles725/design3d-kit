@@ -118,3 +118,18 @@ test('deBox builds REAL geometry per builder, all outward-wound (signedVolume>0)
   const src = { objects: blockout.parts.map((p) => ({ id: p.id, type: p.type, center: p.center, size: p.size })) };
   assert.equal(checkPassParity(src, built).ok, true);
 });
+
+// i2 review #b: axis inferred from the longest bbox dim so a HORIZONTAL vessel doesn't build vertical.
+test('horizontal tank without explicit axis → revolve axis = longest dim (not vertical)', () => {
+  const plan = deBoxPlan({ parts: [{ id: 'HT', type: 'tank', center: [0, 0, 0], size: [3, 1.2, 1.2] }] });
+  const bp = plan.parts[0].builderParams;
+  assert.equal(bp.axis, 'x');       // longest dim = x → horizontal vessel
+  assert.equal(bp.height, 3);        // length along the resolved axis
+  assert.equal(bp.radius, 0.6);      // half the tighter cross-dim
+});
+
+test('explicit part.axis is honored over the longest-dim inference', () => {
+  const plan = deBoxPlan({ parts: [{ id: 'VT', type: 'tank', center: [0, 0, 0], size: [3, 1.2, 1.2], axis: 'y' }] });
+  assert.equal(plan.parts[0].builderParams.axis, 'y'); // explicit wins → vertical despite x being longest
+  assert.equal(plan.parts[0].builderParams.height, 1.2);
+});
