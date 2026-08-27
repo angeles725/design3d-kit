@@ -186,6 +186,25 @@ export class SpatialHarness {
   connectedTo(id) { const out = new Set();
     for (const c of this.connections) { const fa=c.from.split('.')[0], fb=c.to.split('.')[0];
       if (fa===id) out.add(fb); if (fb===id) out.add(fa); } return [...out]; }
+  // adjacency over the logical connection edges (obj-id → set of directly-connected obj-ids)
+  #connAdj() { const adj = new Map();
+    for (const c of this.connections) { const a=c.from.split('.')[0], b=c.to.split('.')[0];
+      if (!adj.has(a)) adj.set(a, new Set()); if (!adj.has(b)) adj.set(b, new Set());
+      adj.get(a).add(b); adj.get(b).add(a); } return adj; }
+  // TRACE THE SYSTEM: the whole CONNECTED NETWORK reachable from an object via port connections (MEP system
+  // graph — inv.md §connection-graph / inv3 §MEP-graph / inv4 getConnectedObjects). connectedTo() gives only
+  // depth-1 neighbours; this returns the full connected component (transitive reach) so the AI can ask "what's
+  // on this system?" — trace CHILLER→PUMP→PIPE→AHU — not just the immediate neighbour. Includes startId; [] if
+  // startId is unknown. BFS over the connection edges, deterministic (sorted).
+  traceSystem(startId) {
+    if (!this.obj.has(startId)) return [];
+    const adj = this.#connAdj(); const seen = new Set([startId]); const q = [startId];
+    while (q.length) { const id = q.shift();
+      for (const nb of (adj.get(id) || [])) if (!seen.has(nb)) { seen.add(nb); q.push(nb); } }
+    return [...seen].sort();
+  }
+  // are a and b on the SAME connected network (transitively wired together)? False if either is unknown.
+  sameSystem(a, b) { return this.obj.has(a) && this.obj.has(b) && this.traceSystem(a).includes(b); }
   // ---- CREATE / TRANSFORM (guarded — reserve/commit, never overlaps) ----
   placeEquipment({ id, type, size, center, rotation, clearance, ports, portDN, category, system, level, parameters, fieldProvenance }) {
     if (this.obj.has(id)) return { success: false, reason: `duplicate id ${id}` };        // RULE 002

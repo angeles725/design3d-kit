@@ -322,4 +322,30 @@ t('regionSummary compacts a region to counts by type + system (global-map view, 
   assert.deepEqual(s.bySystem, { supply: 2, chw: 1 });
 });
 
+t('traceSystem returns the full connected component (transitive), not just depth-1 (MEP graph)', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id:'CH',   size:[1,1,1], center:[1,2,0.5], ports:{ o:[0.5,0,0] } });
+  h.placeEquipment({ id:'P',    size:[1,1,1], center:[3,2,0.5], ports:{ i:[-0.5,0,0], o:[0.5,0,0] } });
+  h.placeEquipment({ id:'PIPE', size:[1,1,1], center:[5,2,0.5], ports:{ i:[-0.5,0,0], o:[0.5,0,0] } });
+  h.placeEquipment({ id:'AHU',  size:[1,1,1], center:[7,2,0.5], ports:{ i:[-0.5,0,0] } });
+  h.placeEquipment({ id:'VAV',  size:[1,1,1], center:[2,6,0.5], ports:{ i:[-0.5,0,0] } }); // isolated
+  h.connectPorts('CH.o','P.i'); h.connectPorts('P.o','PIPE.i'); h.connectPorts('PIPE.o','AHU.i');
+  assert.deepEqual(h.traceSystem('CH'), ['AHU','CH','P','PIPE']); // full chain, sorted, includes start
+  assert.deepEqual(h.connectedTo('CH'), ['P']);                   // contrast: depth-1 only
+  assert.deepEqual(h.traceSystem('VAV'), ['VAV']);                // isolated -> just itself
+  assert.deepEqual(h.traceSystem('GHOST'), []);                   // unknown -> empty
+});
+
+t('sameSystem is true across the transitive chain, false across disconnected systems', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id:'CH',  size:[1,1,1], center:[1,2,0.5], ports:{ o:[0.5,0,0] } });
+  h.placeEquipment({ id:'P',   size:[1,1,1], center:[3,2,0.5], ports:{ i:[-0.5,0,0], o:[0.5,0,0] } });
+  h.placeEquipment({ id:'AHU', size:[1,1,1], center:[5,2,0.5], ports:{ i:[-0.5,0,0] } });
+  h.placeEquipment({ id:'VAV', size:[1,1,1], center:[2,6,0.5], ports:{ i:[-0.5,0,0] } });
+  h.connectPorts('CH.o','P.i'); h.connectPorts('P.o','AHU.i');
+  assert.equal(h.sameSystem('CH','AHU'), true);    // CH→P→AHU transitively
+  assert.equal(h.sameSystem('CH','VAV'), false);   // disconnected
+  assert.equal(h.sameSystem('CH','GHOST'), false); // unknown
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);
