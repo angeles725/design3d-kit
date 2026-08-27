@@ -203,6 +203,15 @@ the pixels show against what the spec promises.
 accepts a pass. Verify corrections on the SAVED capture, not in-memory state; the blind
 reviewer's view of that capture is the ONLY acceptance authority.
 
+**The orchestrator PRE-LOOK is triage, never the verdict — on a pre-look ↔ blind discrepancy, an
+objective MEASUREMENT of the gated artifact breaks the tie, not credence.** A pre-look opinion (even the
+orchestrator's own) carries confirmation bias. In COB-IM2 WU-L4-A the pre-look read "bay isolated" while
+the blind read "uniform carpet"; measuring the gated PNG (§measure the artifact) settled it — the
+non-bay 2/3-right region dimmed only mean 50.3→45.0 (−10%), std 36.8→25.6, with the bay itself intact
+(63.9→63.5). The dim was REAL but too modest, so the blind was right and the pre-look was biased. Resolve
+a triage↔blind conflict by measuring the artifact, never by choosing whom to believe. (This is the
+orchestrator-side twin of "mechanical-green is not a verdict".)
+
 **ONE judge is a single point of failure — escalate to a PANEL.** A blind reviewer reads a
 DOWNSCALED render and reasons from pixels alone, so it can be confidently wrong in three ways:
 report a present-but-small feature as ABSENT, name the wrong CAUSE, or demand something the physics
@@ -218,6 +227,14 @@ cannot satisfy. All three happened in the cinemex run.
   swung 0.76↔0.55, ahu-and-duct-run 0.76↔0.71 across single judges; a 2-judge panel returned a stable
   unanimous 0.79). Take the panel's consensus; a split panel is surfaced to the user, not silently
   resolved.
+- **N near-threshold failures of the SAME feature ⇒ interrogate the APPROACH, not the parameter.**
+  When a feature keeps failing just under threshold across corrections, the defect is usually the
+  ENFOQUE, not the tuning — no amount of the same move clears it (COB-IM2 WU-L4-A: frame+dim cannot
+  isolate a 12 m strip of a 153 m plan at 0.31 oblique occupancy; two corrections both stalled
+  near-threshold). Treat repeated near-threshold bounce as the signal to SWITCH APPROACH entirely
+  (there: hide the non-bay geometry rather than dim it), handled as a user-authorized LINEAGE RESET with
+  a fresh budget — not another polish pass on the exhausted retry loop. "Keep tuning the same knob" and
+  "the approach is wrong" look identical from a single failure; they separate only across attempts.
 - Give the panel members different lenses where the feature allows it (does it READ? is it PRESENT
   at native resolution? does it match the spec's promise?) — three identical judges are one judge
   with extra steps.
