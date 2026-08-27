@@ -14,6 +14,16 @@ const grow = (b, cl = {}) => { const lo=[...b.lo], hi=[...b.hi];
   const m={'+x':[0,hi],'-x':[0,lo],'+y':[1,hi],'-y':[1,lo],'+z':[2,hi],'-z':[2,lo]};
   for (const [k,v] of Object.entries(cl)) { const e=m[k]; if(!e) continue; if(e[1]===hi) hi[e[0]]+=v; else lo[e[0]]-=v; } return {lo,hi}; };
 const dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+// slab-clip: does segment p→q touch AABB box (optionally Minkowski-inflated by the caller)?
+const segHitsBox = (p, q, box) => {
+  let t0 = 0, t1 = 1; const d = [q[0]-p[0], q[1]-p[1], q[2]-p[2]];
+  for (let i=0;i<3;i++) {
+    if (Math.abs(d[i]) < 1e-9) { if (p[i] < box.lo[i] || p[i] > box.hi[i]) return false; }
+    else { let ta=(box.lo[i]-p[i])/d[i], tb=(box.hi[i]-p[i])/d[i]; if (ta>tb) [ta,tb]=[tb,ta];
+           t0=Math.max(t0,ta); t1=Math.min(t1,tb); if (t0>t1) return false; }
+  }
+  return true;
+};
 
 export class SpatialHarness {
   // room:{size:[X,Y,Z]}; clearancePolicy 'warn' (default, matches verify.mjs SOFT) | 'block'
@@ -24,6 +34,7 @@ export class SpatialHarness {
     // multi-agent prerequisite (all E4 agents must reserve in the same frame).
     this.frame = opts.frame ?? { units: 'm', x: 'east', y: 'north', z: 'up', origin: [0,0,0] };
     this.lastOp = null;
+    this.connections = []; // {from, to, worldA, worldB, length} — logical port connections
   }
   // CONTEXT: propioception — "the AI never loses its place" (inv3 §21 agentSpatialState, inv4 §propioception)
   whereAmI() { return { frame: this.frame, room: { size: this.room }, count: this.obj.size, lastOp: this.lastOp }; }
@@ -54,6 +65,43 @@ export class SpatialHarness {
       }
     return out;
   }
+  // ---- QUERY "senses" (read-only perception — interrogate the world, don't imagine it) ----
+  objectsWithin(origin, radius) { // origin = [x,y,z] point OR an object id
+    const c = Array.isArray(origin) ? origin : this.obj.get(origin)?.center; if (!c) return [];
+    const out = [];
+    for (const [id, o] of this.obj) { if (o.center === c) continue;
+      const d = dist(c, o.center); if (d <= radius + EPS) out.push({ id, distance: Number(d.toFixed(3)) }); }
+    return out.sort((a,b) => a.distance - b.distance);
+  }
+  #xyOverlap(A, B) { return Math.min(A.hi[0],B.hi[0])-Math.max(A.lo[0],B.lo[0]) > EPS
+                        && Math.min(A.hi[1],B.hi[1])-Math.max(A.lo[1],B.lo[1]) > EPS; }
+  whatIsAbove(id) { const o = this.obj.get(id); if (!o) return null; const A = this.#phys(o); let best=null, bz=Infinity;
+    for (const [k,v] of this.obj) { if (k===id) continue; const B=this.#phys(v);
+      if (this.#xyOverlap(A,B) && B.lo[2] >= A.hi[2]-EPS) { const gap=B.lo[2]-A.hi[2]; if (gap<bz){bz=gap; best={id:k, gap:Number(gap.toFixed(3))};} } } return best; }
+  whatIsBelow(id) { const o = this.obj.get(id); if (!o) return null; const A = this.#phys(o); let best=null, bz=Infinity;
+    for (const [k,v] of this.obj) { if (k===id) continue; const B=this.#phys(v);
+      if (this.#xyOverlap(A,B) && B.hi[2] <= A.lo[2]+EPS) { const gap=A.lo[2]-B.hi[2]; if (gap<bz){bz=gap; best={id:k, gap:Number(gap.toFixed(3))};} } } return best; }
+  pathFree(start, end, size = [0,0,0]) { // is a straight run (optional swept box) clear of every body?
+    const blocked = []; const pad = size.map(s => s/2);
+    for (const [id, o] of this.obj) { const b = this.#phys(o);
+      const box = { lo: b.lo.map((v,i)=>v-pad[i]), hi: b.hi.map((v,i)=>v+pad[i]) };
+      if (segHitsBox(start, end, box)) blocked.push(id); }
+    return { free: blocked.length === 0, blockedBy: blocked };
+  }
+  // ---- CONNECT (by port IDENTITY, never coordinates — RULE 006) ----
+  #portWorld(ref) { const [oid, pid] = String(ref).split('.'); const o = this.obj.get(oid);
+    const off = o?.ports?.[pid]; if (!o || !off) return null; return [o.center[0]+off[0], o.center[1]+off[1], o.center[2]+off[2]]; }
+  connectPorts(refA, refB) {
+    const a = this.#portWorld(refA), b = this.#portWorld(refB);
+    if (!a) return { success:false, reason:`undefined port ${refA}` };
+    if (!b) return { success:false, reason:`undefined port ${refB}` };
+    const conn = { from: refA, to: refB, worldA: a, worldB: b, length: Number(dist(a,b).toFixed(4)) };
+    this.connections.push(conn); this.lastOp = { op:'connect', from:refA, to:refB };
+    return { success:true, connection: conn };
+  }
+  connectedTo(id) { const out = new Set();
+    for (const c of this.connections) { const fa=c.from.split('.')[0], fb=c.to.split('.')[0];
+      if (fa===id) out.add(fb); if (fb===id) out.add(fa); } return [...out]; }
   // ---- CREATE / TRANSFORM (guarded — reserve/commit, never overlaps) ----
   placeEquipment({ id, type, size, center, clearance, ports }) {
     if (this.obj.has(id)) return { success: false, reason: `duplicate id ${id}` };        // RULE 002
