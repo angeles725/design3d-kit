@@ -111,6 +111,38 @@ export class SpatialHarness {
       if (segHitsBox(start, end, box)) blocked.push(id); }
     return { free: blocked.length === 0, blockedBy: blocked };
   }
+  // ---- RUN footprint / free-space (undimensioned plan position — read from the trace, NOT eyeballed) ----
+  // A "run" = an ordered centerline polyline [[x,y,z],…] with a cross-section width (+ optional height).
+  // When a drawing carries 0 plan DIMENSION (position read from the trace, per Revisor COB-IM2 L4), the AI
+  // must NOT guess where the run sits. It asks for the run's FOOTPRINT (planar bbox inflated by half-width +
+  // per-segment swept AABBs + length) and its FREE-space vs placed objects. inv.md §occupancy/find-free-space.
+  runFootprint(centerline, { width = 0, height = null } = {}) {
+    if (!Array.isArray(centerline) || centerline.length < 1) return null;
+    const half = width / 2, hz = height != null ? height / 2 : 0;
+    const round3 = (a) => a.map(v => Number(v.toFixed(4)));
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const p of centerline) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], p[i]); mx[i] = Math.max(mx[i], p[i]); }
+    const bbox = { lo: round3([mn[0]-half, mn[1]-half, mn[2]-hz]), hi: round3([mx[0]+half, mx[1]+half, mx[2]+hz]) };
+    const segments = [];
+    for (let i = 0; i < centerline.length - 1; i++) { const a = centerline[i], b = centerline[i+1];
+      segments.push({ a, b,
+        lo: round3([Math.min(a[0],b[0])-half, Math.min(a[1],b[1])-half, Math.min(a[2],b[2])-hz]),
+        hi: round3([Math.max(a[0],b[0])+half, Math.max(a[1],b[1])+half, Math.max(a[2],b[2])+hz]),
+        length: Number(dist(a, b).toFixed(4)) }); }
+    const length = Number(segments.reduce((s, seg) => s + seg.length, 0).toFixed(4));
+    return { bbox, segments, length, width, height };
+  }
+  // sweep the run's cross-section along its centerline and test against every placed object (reuses pathFree's
+  // Minkowski-inflated slab-clip per segment). free=true => the undimensioned plan position is collision-clear.
+  runFree(centerline, { width = 0, height = 0 } = {}) {
+    if (!Array.isArray(centerline) || centerline.length < 2) return { free: true, blockedBy: [] };
+    const size = [width, width, height]; const blocked = new Set();
+    for (let i = 0; i < centerline.length - 1; i++) {
+      const r = this.pathFree(centerline[i], centerline[i+1], { size });
+      if (!r.free) for (const id of (r.blockedBy || [])) blocked.add(id);
+    }
+    return { free: blocked.size === 0, blockedBy: [...blocked] };
+  }
   // ---- CONNECT (by port IDENTITY, never coordinates — RULE 006) ----
   // resolve a port's LOCAL offset from EITHER shape: bare array [x,y,z] (inv3 vectorizer) OR
   // {position,dn,...} (inv4 element-model). One vocabulary across the BIM lane + tool surface.
