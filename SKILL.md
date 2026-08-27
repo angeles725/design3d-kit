@@ -49,7 +49,13 @@ source of truth — never improvise phases, gates, or track rules from memory.
    Per-mesh provenance record: url · author · license · sha256 · scale · transforms ·
    triangle/vertex count · fidelity note — so origin and terms are auditable at any time.
    An external mesh is never a `[CERT]` measured subject (at most `[INFER]` — certainty
-   attaches to what we verified, not to what we fetched). Full spec:
+   attaches to what we verified, not to what we fetched).
+   **AI-GENERATED meshes (Hunyuan3D · Rodin/Hyper3D · TRELLIS/TRELLIS.2) are BLOCKED from the
+   external-mesh CERT track — tier-C decorative props only, NEVER certified.** A permissive (MIT)
+   CODE repo does NOT license the generated mesh OUTPUT; "no rights claimed" is NOT a CC0/CC-BY
+   grant; several carry extra terms (Hunyuan3D EU/UK/Korea territorial exclusions; Rodin free-trial
+   output license unknown). Only Poly Haven (CC0) is a clean auto-source; Sketchfab is per-model
+   manual license capture. Full spec:
    `disenos/catalog/EXTERNAL-ASSETS.md`.
 9. **Deterministic capture hook**: for reproducible headless QA, every Three.js scene must
    expose a `window.__cam` accessor and honour a `--cam <x,y,z,tx,ty,tz>` flag so captures
