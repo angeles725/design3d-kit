@@ -131,3 +131,9 @@ closes) · `superseded-by: <name>`.
 |---|---|---|---|---|
 | drainage-slope | module (parts) | `applyDrainageSlope(waypoints,{axis,minGrade,descending})` — post-route build transform that redistributes an orthogonal route's total drop so EVERY horizontal run descends at ≥ minGrade (each run gets drop=minGrade·horizLen; remainder absorbed by the vertical falls). Preserves X/Z path, net drop, endpoints, monotonicity. Closes the flat-run pooling defect the drainage flow-check found. | design3d MATHQC v1.19 · drainage flow-check before[0,0,0,0]→after[2%,2%,2%,2%], clash PASS | ready (staged) |
 | drainage-check | module (harness) | `checkDrainageSlope(waypoints,{axis,minGrade,descending})→{ok,flatRuns,minRunGrade,netGrade,monotonic}` — gate-side QC that flags horizontal runs below minGrade (the pooling defect) so a regression can't reintroduce flat drains. Complements drainage-slope (fix) with detection. Pure, REPORTS-only, deterministic. | design3d MATHQC v1.19 · 7/7 tests | ready (staged) |
+
+## v1.19 — voxel→CAD vectorizer (increment 1)
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| duct-vectorize | module (parts) | Junction classifier — the doc's voxel→CAD semantics made concrete: given axis-aligned duct RUNS (segment + round/rect cross-section), `classifyDuctJunctions(runs)→{junctions:[{position,type,degree,runIds,directions,turnAngle?,sections}]}` types each shared run-end into a fitting: 2 collinear same-section → `straight`, 2 collinear diff-section → `reducer`, 2 at an angle → `elbow` (+turnAngle), 3 → `tee`, 4 → `cross`, 1 → `free-end`. `directions` point AWAY from the junction (feed fitting-select / rect-duct / hvac-fittings). Pure zero-import, REPORTS-only, deterministic. Increment 1 of the vectorizer (voxel→runs skeletonization follows). | `library/parts/duct-vectorize.mjs` (+ `.test.mjs`, 9 green) · investigacion.md voxel-as-spatial-brain | ready |
