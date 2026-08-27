@@ -56,7 +56,10 @@ export class SpatialHarness {
   nearest(id, type) { const o = this.obj.get(id); if(!o) return null; let best=null, bd=Infinity;
     for (const [k,v] of this.obj) { if (k===id || (type && v.type!==type)) continue;
       const d = dist(o.center, v.center); if (d<bd){bd=d; best={id:k, distance:Number(d.toFixed(3))};} } return best; }
-  freeSpace(size, step = 0.5) { // scan floor grid for a slot whose AABB collides with nothing
+  // exact O(objects) scan by default; opt-in {grid,accel} delegates to occupancy-accel.findFreeRegion (O(cells)) for large scenes
+  freeSpace(size, opts = {}) {
+    const { step = 0.5, grid = null, accel = null, near = null } = opts;
+    if (grid && accel?.findFreeRegion) { const c = accel.findFreeRegion(grid, size, near ? { near } : {}); return c ? [c] : []; }
     const out = [];
     for (let x = size[0]/2; x <= this.room[0]-size[0]/2 + EPS; x += step)
       for (let y = size[1]/2; y <= this.room[1]-size[1]/2 + EPS; y += step) {
@@ -81,7 +84,12 @@ export class SpatialHarness {
   whatIsBelow(id) { const o = this.obj.get(id); if (!o) return null; const A = this.#phys(o); let best=null, bz=Infinity;
     for (const [k,v] of this.obj) { if (k===id) continue; const B=this.#phys(v);
       if (this.#xyOverlap(A,B) && B.hi[2] <= A.lo[2]+EPS) { const gap=A.lo[2]-B.hi[2]; if (gap<bz){bz=gap; best={id:k, gap:Number(gap.toFixed(3))};} } } return best; }
-  pathFree(start, end, size = [0,0,0]) { // is a straight run (optional swept box) clear of every body?
+  // exact segment-vs-AABB slab-clip by default (O(objects), swept box via opts.size); opt-in {grid,accel}
+  // delegates to occupancy-accel.pathFree (O(cells), DDA-exact for the centerline) for large scenes.
+  pathFree(start, end, opts = {}) {
+    const { size = [0,0,0], grid = null, accel = null, allow = null } = opts;
+    if (grid && accel?.pathFree) { const r = accel.pathFree(grid, start, end, allow ? { allow } : {});
+      return { free: r.clear, blockedAt: r.blockedAt ?? null }; } // grid path names a POINT, not ids
     const blocked = []; const pad = size.map(s => s/2);
     for (const [id, o] of this.obj) { const b = this.#phys(o);
       const box = { lo: b.lo.map((v,i)=>v-pad[i]), hi: b.hi.map((v,i)=>v+pad[i]) };

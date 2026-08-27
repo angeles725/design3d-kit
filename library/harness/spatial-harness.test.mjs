@@ -211,4 +211,26 @@ t("fromScene auto-connects a runs/connections list by identity; skips free: ends
   assert.equal(h.connections.length, 1);
 });
 
+
+t("pathFree/freeSpace delegate to an injected accel when a grid is provided (opt-in, default unchanged)", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"W",size:[1,1,2],center:[6,4,1]});
+  // default (no grid) = exact slab-clip, unchanged
+  assert.equal(h.pathFree([2,4,1],[10,4,1]).free, false);
+  assert.equal(h.pathFree([2,1,1],[10,1,1]).free, true);
+  // opt-in delegation: a MOCK accel proves the harness routes to it + adapts the return shape
+  const calls = [];
+  const mockAccel = {
+    pathFree: (grid,a,b) => { calls.push(["pathFree",grid]); return { clear:false, blockedAt:[6,4,1] }; },
+    findFreeRegion: (grid,size) => { calls.push(["findFreeRegion",grid]); return [1.5,1.5,size[2]/2]; },
+  };
+  const g = { __grid:true };
+  const pf = h.pathFree([2,4,1],[10,4,1], { grid:g, accel:mockAccel });
+  assert.equal(pf.free, false); assert.deepEqual(pf.blockedAt, [6,4,1]);
+  assert.equal(calls[0][0], "pathFree"); assert.equal(calls[0][1], g);
+  const fr = h.freeSpace([1,1,1], { grid:g, accel:mockAccel });
+  assert.deepEqual(fr, [[1.5,1.5,0.5]]);
+  assert.equal(calls[1][0], "findFreeRegion");
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);
