@@ -83,10 +83,20 @@ decision is grounded in the real occupied state, not its own stale mental model.
   a scene needs true swept/rotated-body queries the BVH cascade can't cover. Keep the engine dependency-light.
 - **Orientation:** three.js `Quaternion` (already vendored, MIT). Internal orientation is always a quaternion.
 
-## 6. Coordinate frames (from Section 11, adapted)
-- One fixed world frame. Logical/CAD model is **Z-up** (BIM/HVAC convention); the three.js RENDER layer is
-  **Y-up**. Declare the up-axis explicitly as a single scene-metadata field (OpenUSD `upAxis` convention) and
-  convert at the render boundary — do not let the two conventions leak into each other.
+## 6. Coordinate frames (from Section 11, adapted — reconciled with i1's render-invariant)
+- **RENDER layer is Y-up, 1u=1m — UNCHANGED and non-negotiable.** This is the existing kit convention
+  (TRACK-THREEJS, shared by all ~285 shipped designs); it is NOT touched by this design.
+- **DATA/spatial layer** (scene_graph, CAD intake) MAY be **Z-up CAD-logical**. Declare it with an explicit
+  scalar field on the spec (OpenUSD `upAxis` convention):
+  - Field: **`upAxis: "Y" | "Z"`**, **default `"Y"`** (render-native; a spec authored directly in render
+    space needs NO conversion). `"Z"` marks a CAD-logical scene whose data is Z-up.
+- **When `upAxis: "Z"`, the Z→Y conversion at the render boundary MUST REUSE the single existing CAD→3D
+  intake transform — never a second, independent mapping.** The existing DWG intake already reflects the plan
+  (COB-IM2 corpus §369-372: three.js `z` maps to the sheet's plan `+Y`, i.e. `z = y` reflection); a
+  spec-authored Z-up scene and a CAD-sourced scene MUST route through the SAME conversion function or they
+  will disagree on up/north. Convert ONCE at the render boundary; never mix conventions mid-scene.
+- Concretely: expose one shared `cadToRender(v)` (the intake's existing transform) and forbid any other
+  up-axis math in the spatial engine. The exact reflection sign is owned by that function, not re-derived here.
 - Transform tree = the three.js `Object3D` / `matrixWorld` hierarchy itself (WORLD→Building→Room→Equipment→
   Port). This already IS a tf2-style parent-matrix tree; adopt it directly. Do NOT build tf2's time-buffered/
   interpolated transforms — a static scene generator has no temporal frames.
