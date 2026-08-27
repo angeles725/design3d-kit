@@ -43,6 +43,26 @@ test('findFreeRegion: returns null when nothing fits', () => {
   assert.equal(findFreeRegion(g, [1, 1, 1], { step: 0.5 }), null);
 });
 
+test('pathFree (DDA) is exact — never false-clears vs a dense-sampled ground truth', () => {
+  const g = new OccupancyGrid([6, 6, 1], 1);
+  for (const [x, y] of [[2, 2], [3, 4], [4, 1], [1, 3]]) g.markObject({ size: [1, 1, 1], center: [x + 0.5, y + 0.5, 0.5] });
+  const pts = [];
+  for (let x = 0.3; x < 6; x += 0.7) for (let y = 0.3; y < 6; y += 0.9) pts.push([x, y, 0.5]);
+  const denseClear = (a, b) => {
+    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const n = Math.max(1, Math.ceil(Math.hypot(d[0], d[1], d[2]) * 100)); // step ~ h/100
+    for (let i = 0; i <= n; i++) { const t = i / n; if (g.cellAt([a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t]) !== CELL.FREE) return false; }
+    return true;
+  };
+  let falseClear = 0, pairs = 0;
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    pairs++;
+    if (pathFree(g, pts[i], pts[j]).clear && !denseClear(pts[i], pts[j])) falseClear++; // DDA must never miss a blocked cell
+  }
+  assert.ok(pairs > 200, 'exercised many segments');
+  assert.equal(falseClear, 0, 'DDA visits every cell the centerline enters — no sampling gap');
+});
+
 test('gridFromScene builds a queryable grid from a scene', () => {
   const scene = { room: { size: [8, 4, 3] }, objects: [{ id: 'A', size: [2, 2, 2], center: [1, 2, 1] }] };
   const g = gridFromScene(scene, { h: 0.5, markClearance: false });
