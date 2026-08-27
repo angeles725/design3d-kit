@@ -159,15 +159,20 @@ export function snapToNominal(raw, ladder = NOMINAL_DUCT_IMPERIAL_M) {
  * Perpendicular offsets of a run's flank lines along the width axis — the input `measureFlankWidth` needs.
  * Projects each flank segment's MIDPOINT onto the (unit) width axis, so the outermost projections are the
  * true exterior flanks regardless of how many wall lines the drawing carries.
- * @param {{a:number[], b:number[]}[]} segments  flank line segments (e.g. inv4 geometry[] LWPOLYLINE pairs).
- * @param {number[]} widthAxis  direction of the width (need not be unit; normalised here).
+ * @param {{a:number[], b:number[]}[]} segments  flank line segments. Accepts 2D `[x,y]` (inv4 flankSegments
+ *        output) OR 3D `[x,y,z]` (a missing z is treated as 0) — DXF/PDF line-work is inherently 2D.
+ * @param {number[]} widthAxis  direction of the width (2D or 3D; need not be unit; normalised here).
  * @returns {number[]} one signed offset per segment.
  */
 export function perpOffsetsFromFlanks(segments, widthAxis) {
-  const u = unit(widthAxis);
+  const ax = widthAxis[0] ?? 0, ay = widthAxis[1] ?? 0, az = widthAxis[2] ?? 0;
+  const l = Math.hypot(ax, ay, az) || 1;
+  const ux = ax / l, uy = ay / l, uz = az / l;
   return (segments || []).map((s) => {
-    const mx = (s.a[0] + s.b[0]) / 2, my = (s.a[1] + s.b[1]) / 2, mz = (s.a[2] + s.b[2]) / 2;
-    return mx * u[0] + my * u[1] + mz * u[2];
+    const mx = ((s.a[0] ?? 0) + (s.b[0] ?? 0)) / 2;
+    const my = ((s.a[1] ?? 0) + (s.b[1] ?? 0)) / 2;
+    const mz = ((s.a[2] ?? 0) + (s.b[2] ?? 0)) / 2;
+    return mx * ux + my * uy + mz * uz;
   });
 }
 

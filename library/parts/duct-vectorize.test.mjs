@@ -236,3 +236,24 @@ test('measureFlankWidth deterministic', () => {
   const f = () => measureFlankWidth([0, 0.011, 0.0935, 0.105], { ladder: EVEN_INCH });
   assert.equal(JSON.stringify(f()), JSON.stringify(f()));
 });
+
+test('perpOffsetsFromFlanks consumes inv4 flankSegments 2D shape {a:[x,y],b:[x,y],layer,geometryIndex}', () => {
+  // inv4 PR #76 emits 2D segments; the projection must treat missing z as 0 (DXF/PDF line-work is 2D).
+  const flankSegments = [
+    { a: [0, 0], b: [0, 1], layer: 'PDF_HVAC', geometryIndex: 3 },        // exterior flank at x=0
+    { a: [0.011, 0], b: [0.011, 1], layer: 'PDF_HVAC', geometryIndex: 4 },
+    { a: [0.0935, 0], b: [0.0935, 1], layer: 'PDF_HVAC', geometryIndex: 5 },
+    { a: [0.105, 0], b: [0.105, 1], layer: 'PDF_HVAC', geometryIndex: 6 }, // exterior flank at x=0.105
+  ];
+  const offs = perpOffsetsFromFlanks(flankSegments, [1, 0]);              // 2D width axis
+  assert.ok(offs.every(Number.isFinite), 'no NaN from missing z');
+  const w = measureFlankWidth(offs, { ladder: EVEN_INCH });
+  assert.ok(Math.abs(w.raw - 0.105) < 1e-9, 'exterior span from inv4 2D segments');
+  assert.equal(w.prov, 'measured');
+});
+
+test('perpOffsetsFromFlanks still accepts 3D segments (missing-z-safe both ways)', () => {
+  const segs3d = [{ a: [0, 0, 2], b: [0, 1, 2] }, { a: [0.4, 0, 2], b: [0.4, 1, 2] }];
+  const offs = perpOffsetsFromFlanks(segs3d, [1, 0, 0]);
+  assert.ok(Math.abs(offs[1] - offs[0] - 0.4) < 1e-9);
+});
