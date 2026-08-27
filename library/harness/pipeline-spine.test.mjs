@@ -45,4 +45,15 @@ t('an illegal blockout (overlap) is BLOCKED at entry — never voxelizes', () =>
   assert.equal(voxelized, false);
 });
 
+
+t("a placeholder-size object is BLOCKED at entry (strict); proceeds with strict:false", () => {
+  const s = { room:{size:[12,8,4]}, objects:[
+    {id:"CH-01",type:"chiller",size:[1,1,1],center:[3,6,0.5],source:{sizeSource:"placeholder"}} ] };
+  const r = runSpine({ scene: s, voxelize: () => ({}), deBox: () => ({objects:[]}) });
+  assert.equal(r.blockedAt, "entry:unresolved-size");
+  assert.deepEqual(r.stages.entry.unresolvedSize, ["CH-01"]);
+  const r2 = runSpine({ scene: s, strict:false, voxelize: () => ({cells:1}), deBox: (v,bo)=>({room:bo.room, objects: bo.objects.map(o=>({...o,material:"x"}))}) });
+  assert.notEqual(r2.blockedAt, "entry:unresolved-size");
+});
+
 console.log(`\n${pass}/${pass} pipeline-spine tests green`);

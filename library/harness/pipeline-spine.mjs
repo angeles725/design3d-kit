@@ -20,15 +20,20 @@ import { checkPassParity } from './pass-parity.mjs';
  *   gateOpts — passed to checkPassParity (posTol, requireDN)
  * @returns {{stages:object, gate:object|null, ok:boolean, blockedAt?:string, provenance?:object}}
  */
-export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {} } = {}) {
+export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, strict = true } = {}) {
   const report = { stages: {}, gate: null, ok: false, provenance: scene?.provenance ?? null };
 
   // ENTRY — accept the dxf-intake superset (or a spec scene_graph); objects[] plugs straight in.
   const entryScene = { room: scene?.room ?? null, objects: scene?.objects ?? [] };
+  // SIZE-RESOLUTION guard (#39 dxf-intake review): a placeholder size ([1,1,1] emitted before ATTRIB SIZE /
+  // block-def bbox resolves it, tagged source.sizeSource:'placeholder') is meaningless for clash/clearance/
+  // voxelize — it must NEVER silently flow into the voxel stage. Strict (default) blocks it.
+  const unresolvedSize = entryScene.objects.filter(o => o?.source?.sizeSource === 'placeholder').map(o => o.id).sort();
   const harness = SpatialHarness.fromScene(entryScene);
   const v = harness.validateAll();
-  report.stages.entry = { objects: entryScene.objects.length, valid: v.ok, violations: v.violations };
-  if (!v.ok) { report.blockedAt = 'entry'; return report; } // an illegal blockout NEVER proceeds to voxelize
+  report.stages.entry = { objects: entryScene.objects.length, valid: v.ok, violations: v.violations, unresolvedSize };
+  if (!v.ok) { report.blockedAt = 'entry'; return report; }              // an illegal blockout NEVER proceeds to voxelize
+  if (strict && unresolvedSize.length) { report.blockedAt = 'entry:unresolved-size'; return report; } // placeholder size never voxelizes
 
   // BLOCKOUT — the certified scene_graph is the carrier every downstream stage must preserve.
   const blockout = harness.toScene();
