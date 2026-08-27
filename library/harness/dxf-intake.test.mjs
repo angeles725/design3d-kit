@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota, classifyDxfSource, sampleSpline } from './dxf-intake.mjs';
+import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota, classifyDxfSource, sampleSpline, getById, getObjectsByLayer, getByLayer } from './dxf-intake.mjs';
 
 // creador1's realistic fixture: tiny 6x4 m HVAC room (INSERT w/ 66=1 + SEQEND, optional per-vertex bulge)
 const DXF = `0
@@ -723,4 +723,25 @@ test('readDxf parses SPLINE; geometryToPolylines samples it so a curved centerli
   assert.ok(curve.some(p => p[1] > 1), 'curve bows toward the interior control points');
   const { positions, index } = toLineBuffers(sp, { arcSegments: 8 });
   assert.ok(positions.length > 8 && index.length > 0, 'spline enters the line-buffers for voxelize');
+});
+
+// --- stable ids + agent queries (investigacion4 addressability) ----------------------------------------
+test('every entity gets a stable uid (deterministic parse order); getById resolves across arrays', () => {
+  assert.equal(sg.objects[0].uid, 'o-1');
+  assert.equal(sg.geometry[0].uid, 'g-1');
+  assert.equal(getById(sg, 'o-1'), sg.objects[0]);
+  assert.equal(getById(sg, 'g-1'), sg.geometry[0]);
+  assert.equal(getById(sg, 'nope'), null);
+  // deterministic: same DXF → same uids
+  assert.equal(readDxf(DXF).geometry[3].uid, 'g-4');
+});
+
+test('getObjectsByLayer / getByLayer filter by layer (case-insensitive; objects use source.layer)', () => {
+  const eq = getObjectsByLayer(sg, 'EQUIP');       // the INSERT object is on EQUIP (via source.layer)
+  assert.equal(eq.length, 1);
+  assert.equal(eq[0].id, 'CH-01');
+  assert.equal(getObjectsByLayer(sg, 'equip').length, 1, 'case-insensitive');
+  const walls = getByLayer(sg, 'WALLS');
+  assert.equal(walls.geometry.length, 4, 'the 4 WALLS segments');
+  assert.equal(walls.objects.length, 0);
 });
