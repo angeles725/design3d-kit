@@ -193,6 +193,16 @@ Three corollaries of interrogating the instrument, all paid for:
   the input census (`N found, N diffed, N covered`); a "no differences" report over an empty set is
   a false green, and a false green leaves no artifact to catch it later. (cinemex X1: the first
   chip-visibility diff resolved 0 camera presets and confidently reported "no changes".)
+- **A CONDITIONALLY-GATED effect needs a NEGATIVE CONTROL, not just positive evidence** (the cousin of
+  the fail-loud-on-zero rule). When an effect only fires under a condition — a clip plane active, a
+  mode/state on, a flag set — a gate that captures only the ON case cannot tell "works" from "always
+  on": a broken effect that fires unconditionally passes the positive shot. Require BOTH a positive
+  capture (condition ON → effect present) AND a negative control (condition OFF → effect ABSENT); the
+  effect is verified only if it appears in the first and is gone in the second. This also means the
+  condition must be drivable by the gate (a URL/flag param), or there is no negative control to take.
+  (Revisor COB-IM2 WU-L4-B2, 2026-08-27: @3D added a missing `?clip=<m>` so the cut was URL-gateable,
+  then took `?capdebug=1` WITH clip → magenta at the cuts AND WITHOUT clip → zero magenta; the negative
+  control is what proved the caps activate only where the clip cuts, not everywhere.)
 - **When two instruments disagree about evidence geometry, MEASURE the gated artifact itself** and
   re-express every dependent threshold as a UNIT CONVERSION (same physical meaning, new unit) —
   never adopt either claimed value, never recalibrate to force green. (cinemex X1: test model said
