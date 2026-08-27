@@ -1,3 +1,5 @@
+// library: spatial-harness  (harness/spatial-harness.mjs) — Delta G v1.19 spatial tool surface; the AI works in tools/relations, the engine owns coordinates + guards RULES 001-010 (investigador2).
+// source: investigacion2/3/4 agentic synthesis + E4 measured multi-agent lock; formalized from the tested harness-proto. Composes with clash-detect.mjs (narrow BVH); broad-phase core dependency-free.
 // spatial-harness.mjs — Delta G (v1.19): high-level spatial tool surface over the semantic scene.
 // The AI works in tools/relations; this engine owns coordinates + GUARDS invariants (RULES 001-010)
 // so an illegal state is impossible by construction. Composes with clash-detect.mjs (narrow BVH) for
