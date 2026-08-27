@@ -381,6 +381,24 @@ averaged away, same rule as `layer_scores`). Proposed Spatial-Intelligence sub-w
 scores this category: Collisions 25 · Clearances 20 · Coordinates/frames 15 · Connectivity 15 ·
 Orientations 10 · Routing 10 · Duplicates/overlap 5.
 
+**`InvalidGeometry` sub-conditions** (each is a hard fail in this family):
+- **InsideOut** — a built mesh with `signedVolume < 0` (`debox-winding.checkDeBoxWinding`).
+- **NonManifold** — open edges / non-manifold vertices where the shell is DECLARED closed (`geom-verify`).
+- **UncappedShell** — a shell whose cut ends are OPEN when the part declares them capped (P6, Revisor
+  COB-IM2: the "see-through/hollow duct" defect that is NOT a winding bug — `signedVolume` passes on it).
+  Gate against the DECLARED cap expectation: a legitimately-cut duct end HAS open edges, so the fail is
+  "open where the part says capped", never "open edges exist". Fix is section/stencil caps, not a winding flip.
+
+**Executable node-level impl:** `library/harness/realista-acceptance.mjs` (`acceptRealista`/`bestOfN`) composes
+the gates above into one deterministic 0-10 verdict — reusing THIS section's hard-fail set + 0.79 cap + the
+≥0.8 critical floors verbatim, REPORTS-only. It is the aggregator; a new failure mode becomes a hard-fail
+sub-condition here or a weighted subscore there (Revisor's retro categories plug in as named `opts.weights`).
+**Mechanical-green is not a verdict:** the aggregator never accepts — the blind review stays the sole visual
+authority (§Blind-review protocol). Revisor COB-IM2 WU-L4-A proved it live: a framing gate went mechanically
+green (overlapsHUD false, console clean) yet BLIND-failed 0.57 because the probe is blind to what else is
+drawn around the subject (whole floor shown while the HUD claimed "one bay"). Mechanical checks CAP and
+report; they never certify a pass on their own.
+
 ### BEST_VERSION retention + Self-Refine (extends the retry cap)
 
 A correction can REGRESS (a fresh judge re-scores untouched features; §Self-correction loop already
