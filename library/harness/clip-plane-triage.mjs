@@ -34,7 +34,8 @@ export function signedDistanceToPlane(point, plane) {
  * tol), or — with `useBbox` — when its axis-aligned bbox spans the plane. REPORTS-ONLY: it names the ends to
  * cap / pixel-check, it does NOT claim the mesh is open there (it isn't — the clip is render-time) and it
  * does NOT verify a cap (that is checkFusedMeshClosed's geometry-delta job).
- * @param {{id:string|number, p0?:number[], p1?:number[], bbox?:{min:number[],max:number[]}}[]} runs
+ * @param {{id:string|number, p0?:number[], p1?:number[], a?:number[], b?:number[], bbox?:{min:number[],max:number[]}}[]} runs
+ *        centerline endpoints as {p0,p1} OR {a,b} (the duct-vectorize run shape) — either works, no re-mapping.
  * @param {{axis?:'x'|'y'|'z', value?:number, normal?:number[], constant?:number}} plane
  * @param {{tol?:number, useBbox?:boolean}} [opts]  tol default 1e-6; useBbox uses bbox-span instead of centerline.
  * @returns {{plane:object, crossing:(string|number)[], count:number, method:'centerline'|'bbox', tol:number}}
@@ -56,10 +57,16 @@ export function clipPlaneTriage(runs, plane, opts = {}) {
         if (s > hi) hi = s;
       }
       cut = lo <= tol && hi >= -tol;
-    } else if (r.p0 && r.p1) {
-      const s0 = signedDistanceToPlane(r.p0, plane), s1 = signedDistanceToPlane(r.p1, plane);
-      const lo = Math.min(s0, s1), hi = Math.max(s0, s1);
-      cut = lo <= tol && hi >= -tol; // the centerline's signed-distance interval contains 0 (straddles the plane)
+    } else {
+      // Accept EITHER endpoint shape: {p0,p1} OR {a,b} (the canonical duct-vectorize run shape used by
+      // classifyDuctJunctions / endpointDegreesFromRuns) — so the SAME runs array feeds both this triage and
+      // endpointDegreesFromRuns with no re-mapping (mirrors inv2's validateRunIdentityByGeometry a/b support).
+      const p0 = r.p0 ?? r.a, p1 = r.p1 ?? r.b;
+      if (p0 && p1) {
+        const s0 = signedDistanceToPlane(p0, plane), s1 = signedDistanceToPlane(p1, plane);
+        const lo = Math.min(s0, s1), hi = Math.max(s0, s1);
+        cut = lo <= tol && hi >= -tol; // the centerline's signed-distance interval contains 0 (straddles the plane)
+      }
     }
     if (cut) crossing.push(r.id);
   }
