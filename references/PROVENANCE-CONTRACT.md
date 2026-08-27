@@ -107,13 +107,21 @@ flag  = divergenceMm ≥ snapDivergenceGateMm
 - **`snapDivergenceGateMm` is configurable** (per drawing / per ladder), because the healthy divergence
   scales with the snap ladder's half-step (the snap decision boundary): a value diverging by most of a
   half-step nearly mis-stepped the ladder.
-- **Calibration cases (Revisor COB-IM2, to ratify the default):** 82.5 mm → 4″(101.6) = **19.1 mm = RED**
-  (a hidden interior/exterior pair error) vs 105 mm → 4″(101.6) = **3.4 mm = healthy**. A default gate
-  must separate these — i.e. **below 20 mm** (the 4″ ladder half-step ≈ 25 mm; 19 mm is ~76% of it).
-  **PROVISIONAL default `snapDivergenceGateMm = 10 mm`** (separates 19 RED / 3.4 green) — pending
-  Revisor's ratification, since his cited WIDTH_GATE=20 mm is the *label-binding* precedent, and 19 mm
-  RED sits *below* it, so the snap-divergence gate is a distinct, smaller threshold.
-- The spine owns the gate wire (fail-loud / advisory per policy); intake just emits `raw`+`deltaMm`.
+- **This is a DISTINCT gate from WIDTH_GATE=20 mm** (confirmed by Revisor). WIDTH_GATE is raw-vs-**label**
+  (does the measured width match the WxH label?); snap-divergence is raw-vs-**nominal-on-the-ladder**.
+  Different axes → a smaller threshold.
+- **The definitive value is a MEASURED histogram valley, NOT a 2-point fit.** Deriving a constant from a
+  couple of anecdotal cases is precisely the error this project keeps hitting. The real gate sits in the
+  **valley of the `|raw − snapped|` histogram over ALL runs**: a healthy cluster (≤ ~5 mm, tracing noise)
+  and a wrong-pair tail (~15–20 mm; the COB-IM2 state-of-record has ~25 runs off by up to ~20 mm). Set the
+  gate at the trough between the two modes.
+- **Chicken-and-egg:** the histogram can't be built until P4 exposes `raw`. So: **`snapDivergenceGateMm = 10 mm`
+  PROVISIONAL now** (it separates the two known points — 19.1 mm RED, 3.4 mm healthy — and ≈ half the 4″
+  ladder half-step); once the exterior-pair + `raw` fix (inv3/inv2) lands on certified data, Revisor
+  histograms `|raw − snapped|` and returns the measured valley to fix the definitive threshold.
+- The spine owns the gate wire (fail-loud / advisory per policy) and reads `snapDivergenceGateMm` as a
+  one-line **config**, not a hardcoded constant, so swapping provisional→measured is a value change only.
+  Intake just emits `raw`+`deltaMm`.
 
 ## 4. Source-kind (P1 / P2 — fail-loud, not silent-empty)
 
