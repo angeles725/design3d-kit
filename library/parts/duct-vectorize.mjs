@@ -159,15 +159,20 @@ export function snapToNominal(raw, ladder = NOMINAL_DUCT_IMPERIAL_M) {
  * Perpendicular offsets of a run's flank lines along the width axis — the input `measureFlankWidth` needs.
  * Projects each flank segment's MIDPOINT onto the (unit) width axis, so the outermost projections are the
  * true exterior flanks regardless of how many wall lines the drawing carries.
- * @param {{a:number[], b:number[]}[]} segments  flank line segments (e.g. inv4 geometry[] LWPOLYLINE pairs).
- * @param {number[]} widthAxis  direction of the width (need not be unit; normalised here).
+ * @param {{a:number[], b:number[]}[]} segments  flank line segments. Accepts 2D `[x,y]` (inv4 flankSegments
+ *        output, #76) OR 3D `[x,y,z]` (a missing z is treated as 0) — DXF/PDF line-work is inherently 2D.
+ * @param {number[]} widthAxis  direction of the width (2D or 3D; need not be unit; normalised here).
  * @returns {number[]} one signed offset per segment.
  */
 export function perpOffsetsFromFlanks(segments, widthAxis) {
-  const u = unit(widthAxis);
+  const ax = widthAxis[0] ?? 0, ay = widthAxis[1] ?? 0, az = widthAxis[2] ?? 0;
+  const l = Math.hypot(ax, ay, az) || 1;
+  const ux = ax / l, uy = ay / l, uz = az / l;
   return (segments || []).map((s) => {
-    const mx = (s.a[0] + s.b[0]) / 2, my = (s.a[1] + s.b[1]) / 2, mz = (s.a[2] + s.b[2]) / 2;
-    return mx * u[0] + my * u[1] + mz * u[2];
+    const mx = ((s.a[0] ?? 0) + (s.b[0] ?? 0)) / 2;
+    const my = ((s.a[1] ?? 0) + (s.b[1] ?? 0)) / 2;
+    const mz = ((s.a[2] ?? 0) + (s.b[2] ?? 0)) / 2;
+    return mx * ux + my * uy + mz * uz;
   });
 }
 
@@ -200,4 +205,26 @@ export function mergeWidthProvenance(labelEnv, flankEnv) {
   if (labelEnv && labelEnv.prov && labelEnv.prov !== 'absent-in-source' && labelEnv.v != null) return labelEnv; // label wins
   if (labelEnv && labelEnv.prov === 'absent-in-source' && flankEnv && flankEnv.prov === 'measured') return flankEnv; // flank fills the gap
   return labelEnv ?? flankEnv ?? { v: null, prov: 'absent-in-source', raw: null, snap: null, deltaMm: null };
+}
+
+// ---- increment 4: ENDPOINT DEGREES per run (for the fused-mesh open-edge gate, Revisor WU-L4-B). ---------
+// The fused-mesh gate (open-edge-cap checkFusedShellOpenEdges) needs each run's expected FREE ends, derived
+// from the CONNECTIVITY DEGREE at each run endpoint (a free end = degree < 2). Runs + classifyDuctJunctions
+// are this module's data, so the topology helper lives here (single source of truth for run shape). inv2's
+// reKeyToNumericRunId re-keys this string-keyed output to system-3d's numeric per-vertex runId, then feeds
+// checkFusedShellOpenEdges. Split A (agreed): inv3 = topology, inv2 = numeric-id adapter + spine handoff.
+
+/**
+ * Endpoint connectivity degrees per run, from the run network's junctions.
+ * @param {Parameters<typeof classifyDuctJunctions>[0]} runs
+ * @returns {Record<string, number[]>} runId -> [degreeAtA, degreeAtB] (free end = 1, through = 2, tee = 3,
+ *          cross = 4). Consumed by expectedOpenLoopsFromDegrees (open-edge-cap) = count of degrees < 2.
+ */
+export function endpointDegreesFromRuns(runs) {
+  const { junctions } = classifyDuctJunctions(runs);
+  const degAt = new Map();
+  for (const j of junctions) degAt.set(key3(j.position), j.degree);
+  const out = {};
+  for (const r of runs || []) out[r.id] = [degAt.get(key3(r.a)) ?? 1, degAt.get(key3(r.b)) ?? 1];
+  return out;
 }

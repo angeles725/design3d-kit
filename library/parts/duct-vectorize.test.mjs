@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {
   classifyDuctJunctions, ductNetworkToScene,
   snapToNominal, measureFlankWidth, perpOffsetsFromFlanks, mergeWidthProvenance,
-  NOMINAL_DUCT_METRIC_M,
+  NOMINAL_DUCT_METRIC_M, endpointDegreesFromRuns,
 } from './duct-vectorize.mjs';
+import { expectedOpenLoopsFromDegrees } from '../harness/open-edge-cap.mjs';
 
 const at = (js, pos) => js.find((j) => Math.hypot(j.position[0] - pos[0], j.position[1] - pos[1], j.position[2] - pos[2]) < 1e-6);
 
@@ -235,4 +236,66 @@ test('flank envelope plugs straight into fieldProvenance.width (shape {v,prov,ra
 test('measureFlankWidth deterministic', () => {
   const f = () => measureFlankWidth([0, 0.011, 0.0935, 0.105], { ladder: EVEN_INCH });
   assert.equal(JSON.stringify(f()), JSON.stringify(f()));
+});
+
+test('perpOffsetsFromFlanks consumes inv4 flankSegments 2D shape {a:[x,y],b:[x,y]} (no NaN from missing z)', () => {
+  const flankSegments = [
+    { a: [0, 0], b: [0, 1], layer: 'PDF_HVAC', geometryIndex: 3 },
+    { a: [0.105, 0], b: [0.105, 1], layer: 'PDF_HVAC', geometryIndex: 6 },
+  ];
+  const offs = perpOffsetsFromFlanks(flankSegments, [1, 0]);
+  assert.ok(offs.every(Number.isFinite), 'no NaN from missing z');
+  assert.ok(Math.abs(offs[1] - offs[0] - 0.105) < 1e-9);
+});
+
+test('perpOffsetsFromFlanks still accepts 3D segments (missing-z-safe both ways)', () => {
+  const offs = perpOffsetsFromFlanks([{ a: [0, 0, 2], b: [0, 1, 2] }, { a: [0.4, 0, 2], b: [0.4, 1, 2] }], [1, 0, 0]);
+  assert.ok(Math.abs(offs[1] - offs[0] - 0.4) < 1e-9);
+});
+
+// ---- increment 4: endpointDegreesFromRuns (topology for the fused-mesh WU-L4-B gate) ----
+test('endpointDegreesFromRuns: L-shape → r1 [free,elbow]=[1,2], r2 [elbow,free]=[2,1]', () => {
+  const d = endpointDegreesFromRuns([
+    { id: 'r1', a: [0, 0, 0], b: [2, 0, 0], radius: 0.1 },
+    { id: 'r2', a: [2, 0, 0], b: [2, 2, 0], radius: 0.1 },
+  ]);
+  assert.deepEqual(d.r1, [1, 2]);
+  assert.deepEqual(d.r2, [2, 1]);
+});
+
+test('endpointDegreesFromRuns: a middle run of a chain is through at BOTH ends → [2,2]', () => {
+  const d = endpointDegreesFromRuns([
+    { id: 'r1', a: [0, 0, 0], b: [2, 0, 0], radius: 0.1 },
+    { id: 'r2', a: [2, 0, 0], b: [4, 0, 0], radius: 0.1 }, // both ends at a junction
+    { id: 'r3', a: [4, 0, 0], b: [6, 0, 0], radius: 0.1 },
+  ]);
+  assert.deepEqual(d.r2, [2, 2]); // through-connected both ends
+  assert.deepEqual(d.r1, [1, 2]);
+});
+
+test('endpointDegreesFromRuns: tee endpoint has degree 3', () => {
+  const d = endpointDegreesFromRuns([
+    { id: 'a', a: [0, 0, 0], b: [2, 0, 0], radius: 0.1 },
+    { id: 'b', a: [0, 0, 0], b: [-2, 0, 0], radius: 0.1 },
+    { id: 'c', a: [0, 0, 0], b: [0, 2, 0], radius: 0.1 },
+  ]);
+  assert.equal(d.a[0], 3); // shared origin is a tee (degree 3)
+  assert.equal(d.a[1], 1); // far end free
+});
+
+test('COMPOSE PROOF: endpointDegreesFromRuns → expectedOpenLoopsFromDegrees matches the fused-gate contract', () => {
+  const d = endpointDegreesFromRuns([
+    { id: 'r1', a: [0, 0, 0], b: [2, 0, 0], radius: 0.1 },
+    { id: 'r2', a: [2, 0, 0], b: [4, 0, 0], radius: 0.1 },
+    { id: 'r3', a: [4, 0, 0], b: [6, 0, 0], radius: 0.1 },
+  ]);
+  // through-run r2 [2,2] → 0 free ends (both mesh ends should be covered)
+  assert.equal(expectedOpenLoopsFromDegrees(d.r2), 0);
+  // terminal r1 [1,2] → 1 free end (the terminal), the connected end must be covered
+  assert.equal(expectedOpenLoopsFromDegrees(d.r1), 1);
+});
+
+test('endpointDegreesFromRuns deterministic', () => {
+  const runs = [{ id: 'r2', a: [2, 0, 0], b: [2, 2, 0], radius: 0.1 }, { id: 'r1', a: [0, 0, 0], b: [2, 0, 0], radius: 0.1 }];
+  assert.equal(JSON.stringify(endpointDegreesFromRuns(runs)), JSON.stringify(endpointDegreesFromRuns(runs)));
 });
