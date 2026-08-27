@@ -15,6 +15,23 @@
 // and never coerces a run with no mapping into a number — an unmapped string is reported, not guessed.
 
 /**
+ * Build the string→numeric runId map the SAME way system-3d assigns its per-vertex `runId` attribute: the
+ * numeric runId IS THE INDEX into DATA.runs (`runs.forEach((r,i) => pushTube/pushBox(..., i))`, @3D verified
+ * against all four geometry call sites). Derive from the ARRAY INDEX — never by parsing the string id: the
+ * `'L4_' + 4-digit-index` correspondence is true today but is a NAMING property, not a contract; an inserted
+ * or deleted run silently desyncs a parsed map while the array index stays correct. `geo` (network) and
+ * `geoT` (terminals) SHARE this one index space over the same DATA.runs array (split by class, index NOT
+ * reset), so the map is global and numeric ids are unique across both fused meshes.
+ * @param {Array<{id:string}>} runs  DATA.runs (system-3d's run array; order defines the numeric id)
+ * @returns {Object<string, number>}  {stringRunId: numericRunId=arrayIndex} — the idMap for reKeyToNumericRunId
+ */
+export function buildNumericRunIdMap(runs) {
+  const map = {};
+  (runs || []).forEach((r, i) => { if (r && r.id != null) map[r.id] = i; });
+  return map;
+}
+
+/**
  * Re-key per-string-run endpoint degrees into per-NUMERIC-run degrees matching system-3d's per-vertex runId.
  * @param {Object<string, number[]>} degreesByStringId  endpointDegreesFromRuns output ({stringRunId: degrees[]})
  * @param {Object<string, number>} idMap  @3D's string→numeric runId map ({stringRunId: numericRunId})
