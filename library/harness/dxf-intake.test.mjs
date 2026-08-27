@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota, classifyDxfSource } from './dxf-intake.mjs';
+import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota, classifyDxfSource, sampleSpline } from './dxf-intake.mjs';
 
 // creador1's realistic fixture: tiny 6x4 m HVAC room (INSERT w/ 66=1 + SEQEND, optional per-vertex bulge)
 const DXF = `0
@@ -629,4 +629,98 @@ test('classifyDxfSource: nothing parsed → empty/parse-failure (distinct from l
   assert.equal(c.kind, 'empty');
   assert.equal(c.designIntentAvailable, false);
   assert.ok(/parse failed|PARSE\/SOURCE failure/.test(c.reason), 'reason flags a real failure, not a structural case');
+});
+
+// --- SPLINE + De-Boor NURBS sampler (investigacion4 gap: curved centerlines were silently dropped) ---------
+test('sampleSpline: rational quadratic control net traces an EXACT quarter circle (NURBS)', () => {
+  // classic NURBS unit-circle quarter: CPs (1,0)(1,1)(0,1), weights 1,1/√2,1, clamped knots
+  const s = sampleSpline({ degree: 2, controlPoints: [[1, 0, 0], [1, 1, 0], [0, 1, 0]],
+    knots: [0, 0, 0, 1, 1, 1], weights: [1, Math.SQRT1_2, 1] }, 16);
+  assert.deepEqual(s[0].map(v => +v.toFixed(6)), [1, 0, 0]);
+  assert.deepEqual(s[s.length - 1].map(v => +v.toFixed(6)), [0, 1, 0]);
+  for (const p of s) assert.ok(Math.abs(Math.hypot(p[0], p[1]) - 1) < 1e-9, `on the unit circle: ${p}`);
+});
+
+test('sampleSpline degenerate inputs never crash or silently drop', () => {
+  assert.deepEqual(sampleSpline({ degree: 3, controlPoints: [] }), []);                  // nothing → nothing
+  assert.deepEqual(sampleSpline({ degree: 3, controlPoints: [[2, 3, 0]] }), [[2, 3, 0]]); // 1 CP → that point
+  // 2 CPs: degree auto-clamps to 1 → a sampled straight line through both endpoints (collinear on the chord)
+  const line = sampleSpline({ degree: 3, controlPoints: [[0, 0, 0], [4, 2, 0]] }, 8);
+  assert.deepEqual(line[0].map(v => +v.toFixed(6)), [0, 0, 0]);
+  assert.deepEqual(line[line.length - 1].map(v => +v.toFixed(6)), [4, 2, 0]);
+  for (const p of line) assert.ok(Math.abs(p[0] - 2 * p[1]) < 1e-9, 'collinear on the chord y=x/2');
+});
+
+const splineDxf = `0
+SECTION
+2
+ENTITIES
+0
+SPLINE
+8
+DUCT
+71
+3
+70
+0
+40
+0.0
+40
+0.0
+40
+0.0
+40
+0.0
+40
+1.0
+40
+1.0
+40
+1.0
+40
+1.0
+10
+0.0
+20
+0.0
+30
+0.0
+10
+1.0
+20
+2.0
+30
+0.0
+10
+3.0
+20
+2.0
+30
+0.0
+10
+4.0
+20
+0.0
+30
+0.0
+0
+ENDSEC
+0
+EOF
+`;
+
+test('readDxf parses SPLINE; geometryToPolylines samples it so a curved centerline reaches voxelize', () => {
+  const sp = readDxf(splineDxf);
+  const g = sp.geometry.find(x => x.kind === 'spline');
+  assert.ok(g, 'SPLINE parsed into geometry[]');
+  assert.equal(g.degree, 3);
+  assert.equal(g.controlPoints.length, 4);
+  assert.equal(g.knots.length, 8);           // n+p+2 = 3+3+2
+  const curve = geometryToPolylines(sp, { arcSegments: 8 })[0];
+  assert.ok(curve.length > 8, 'sampled to many points, not dropped');
+  assert.deepEqual(curve[0].map(v => +v.toFixed(6)), [0, 0, 0]);                 // clamped → through first CP
+  assert.deepEqual(curve[curve.length - 1].map(v => +v.toFixed(6)), [4, 0, 0]);  // and last CP
+  assert.ok(curve.some(p => p[1] > 1), 'curve bows toward the interior control points');
+  const { positions, index } = toLineBuffers(sp, { arcSegments: 8 });
+  assert.ok(positions.length > 8 && index.length > 0, 'spline enters the line-buffers for voxelize');
 });
