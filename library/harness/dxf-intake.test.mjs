@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer } from './dxf-intake.mjs';
+import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota } from './dxf-intake.mjs';
 
 // creador1's realistic fixture: tiny 6x4 m HVAC room (INSERT w/ 66=1 + SEQEND, optional per-vertex bulge)
 const DXF = `0
@@ -509,4 +509,99 @@ test('annotationLayers override: a drawing that abuses layer 0 can exclude it', 
   const excludeZero = readDxf(dxf, { annotationLayers: ['0'] });
   assert.ok(Math.abs(excludeZero.room.size[0] - 6) < 1e-9, 'layer 0 excluded on request → clean 6x4');
   assert.deepEqual([...excludeZero.room.excludedLayers], ['0']);
+});
+
+// --- TEXT/MTEXT cota intake (P1a, Revisor's COB-IM2 retro: cotas are MTEXT, ZERO DIMENSION entities) --------
+test('stripMText removes inline formatting → plain cota text', () => {
+  assert.equal(stripMText('{\\fArial|b0|i0|c0|p34;300x200}'), '300x200');
+  assert.equal(stripMText('\\A1;\\H2.5x;Ø300'), 'Ø300');
+  assert.equal(stripMText('line1\\Pline2'), 'line1\nline2');
+});
+
+test('isSizedCota detects WxH / Ø / DN / CFM, not a plain label', () => {
+  for (const c of ['300x200', 'Ø300', 'DN 150', '220 CFM', '18 l/s', 'BOD +3.20']) assert.ok(isSizedCota(c), c);
+  for (const n of ['PLANTA BAJA', 'OFICINA', 'NIVEL 4']) assert.ok(!isSizedCota(n), n);
+});
+
+// MTEXT (formatted) + multi-chunk MTEXT (code 3…+ code 1) + a plain TEXT, all on the annotation layer PDF_Text,
+// with NO DIMENSION entity — exactly the real sheet shape.
+const cotaDxf = `0
+SECTION
+2
+ENTITIES
+0
+MTEXT
+8
+PDF_Text
+10
+100.0
+20
+50.0
+30
+0.0
+40
+0.25
+1
+{\\fArial|b0|i0|c0|p34;300x200}
+0
+MTEXT
+8
+PDF_Text
+10
+120.0
+20
+55.0
+40
+0.25
+3
+220
+1
+ CFM
+0
+TEXT
+8
+PDF_Text
+10
+140.0
+20
+60.0
+40
+0.2
+1
+Ø300
+0
+TEXT
+8
+PDF_Text
+10
+5.0
+20
+5.0
+40
+0.2
+1
+OFICINA
+0
+ENDSEC
+0
+EOF
+`;
+const cota = readDxf(cotaDxf);
+
+test('TEXT + MTEXT parsed into annotations[] with position/height/layer', () => {
+  assert.equal(cota.annotations.length, 4);
+  const wxh = cota.annotations.find(a => a.text === '300x200');
+  assert.ok(wxh && wxh.kind === 'MTEXT', 'formatted MTEXT stripped to 300x200');
+  assert.deepEqual(wxh.position, [100, 50, 0]);
+  assert.equal(wxh.height, 0.25);
+  assert.equal(wxh.layer, 'PDF_Text');
+  assert.ok(cota.annotations.find(a => a.text === '220 CFM'), 'multi-chunk MTEXT (code 3 + code 1) reassembled');
+});
+
+test('provenance.cotas fail-loud signal: sized MTEXT present but 0 DIMENSION entities', () => {
+  assert.equal(cota.provenance.cotas.dimensionEntities, 0, 'no DIMENSION entities on the sheet');
+  assert.equal(cota.provenance.cotas.sizedText, 3, '300x200 + 220 CFM + Ø300 are sized cotas; OFICINA is not');
+  // the spine uses this to reject a false "no cotas" report:
+  const c = cota.provenance.cotas;
+  assert.ok(c.dimensionEntities === 0 && c.sizedText > 0, 'cotas exist as text — must NOT report "no cotas"');
 });
