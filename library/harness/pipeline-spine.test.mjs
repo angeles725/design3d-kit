@@ -70,7 +70,7 @@ t('provenance envelopes thread entry->blockout; healthy snap raises no divergenc
 
 t('snap divergence >= gate flags (warn: reported not blocked; block: fail-loud); gate is configurable (§3)', () => {
   const fp = { width:{ v:0.1016, prov:'measured', raw:0.0825, snap:'imperial-4in', deltaMm:19.1 } };
-  const warn = runSpine({ scene: provScene(fp) }); // default policy warn, gate 10
+  const warn = runSpine({ scene: provScene(fp) }); // default policy warn, measured gate 9mm
   assert.equal(warn.stages.provenance.divergenceFlags.length, 1);
   assert.equal(warn.stages.provenance.divergenceFlags[0].deltaMm, 19.1);
   assert.notEqual(warn.blockedAt, 'entry:snap-divergence'); // warn surfaces but does not block
@@ -78,6 +78,14 @@ t('snap divergence >= gate flags (warn: reported not blocked; block: fail-loud);
   assert.equal(block.blockedAt, 'entry:snap-divergence');
   const hiGate = runSpine({ scene: provScene(fp), snapDivergenceGateMm:25 }); // above the 4" half-step
   assert.equal(hiGate.stages.provenance.divergenceFlags.length, 0);
+});
+
+t('default snapDivergenceGateMm = 9mm (Revisor histogram valley over 2033 certified runs)', () => {
+  const at = (d) => runSpine({ scene: provScene({ width:{ v:0.1016, prov:'measured', raw:0.10, snap:'imperial-4in', deltaMm:d } }) })
+    .stages.provenance.divergenceFlags.length;
+  assert.equal(at(9.5), 1); // just above the measured 9mm valley -> review candidate
+  assert.equal(at(8.0), 0); // below the valley -> healthy (between-nominals duct), not flagged
+  assert.equal(at(9.0), 1); // exactly at the gate flags (>= is inclusive)
 });
 
 t('malformed envelope violates the v-null-IFF-absent invariant -> fail-loud block (§2)', () => {

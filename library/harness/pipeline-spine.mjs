@@ -68,7 +68,7 @@ export function crossCheckFrames(frames, gateMm = 20) {
  * @returns {{stages:object, gate:object|null, ok:boolean, blockedAt?:string, provenance?:object}}
  */
 export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, strict = true,
-                           snapDivergenceGateMm = 10, divergencePolicy = 'warn', coRegisterGateMm = 20 } = {}) {
+                           snapDivergenceGateMm = 9, divergencePolicy = 'warn', coRegisterGateMm = 20 } = {}) {
   const report = { stages: {}, gate: null, ok: false, provenance: scene?.provenance ?? null };
 
   // ENTRY — accept the dxf-intake superset (or a spec scene_graph); objects[] plugs straight in.
