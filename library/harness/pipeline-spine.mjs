@@ -1,0 +1,53 @@
+// library: pipeline-spine  (harness/pipeline-spine.mjs) — {CAD/foto/spec}→voxel→realista end-to-end orchestrator (investigador2, v1.19).
+// source: the four investigations' unifying thesis — AI proposes via tools, a deterministic engine owns
+//         coordinates, three.js only renders. This wires the CORE AXIS the doc calls the weak link:
+//         intake → voxel/blockout → realista, with the scene_graph as the SINGLE carrier and a transform
+//         gate guarding the realista step. Modules are INJECTED (pluggable, dependency-free): inv4
+//         dxf-intake emits the entry scene, inv1 voxelize, inv3 de-box/realista. This closes the axis
+//         demonstrated end-to-end (self-verifying, spatial-harness.example.mjs style).
+// deps: spatial-harness (scene_graph carrier + validation), pass-parity (the transform gate, GATES §440).
+import { SpatialHarness } from './spatial-harness.mjs';
+import { checkPassParity } from './pass-parity.mjs';
+
+/**
+ * Run the CAD/foto/spec → voxel → realista spine. Each downstream module is injected; without it the
+ * stage is marked PENDING (so the skeleton runs the parts that exist and shows what's still to plug in).
+ * @param {{scene:object, voxelize?:Function, deBox?:Function, gateOpts?:object}} cfg
+ *   scene    — inv4 dxf-intake emit shape OR a spec scene_graph. `objects[]` is the shared schema;
+ *              `geometry[]`/`schedule[]`/`provenance` are additive and threaded through untouched.
+ *   voxelize — (blockout) => voxels           (inv1 module; geometry/blockout → occupancy voxel)
+ *   deBox    — (voxels, blockout) => realista  (inv3 module; voxel → realistic scene, transforms preserved)
+ *   gateOpts — passed to checkPassParity (posTol, requireDN)
+ * @returns {{stages:object, gate:object|null, ok:boolean, blockedAt?:string, provenance?:object}}
+ */
+export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {} } = {}) {
+  const report = { stages: {}, gate: null, ok: false, provenance: scene?.provenance ?? null };
+
+  // ENTRY — accept the dxf-intake superset (or a spec scene_graph); objects[] plugs straight in.
+  const entryScene = { room: scene?.room ?? null, objects: scene?.objects ?? [] };
+  const harness = SpatialHarness.fromScene(entryScene);
+  const v = harness.validateAll();
+  report.stages.entry = { objects: entryScene.objects.length, valid: v.ok, violations: v.violations };
+  if (!v.ok) { report.blockedAt = 'entry'; return report; } // an illegal blockout NEVER proceeds to voxelize
+
+  // BLOCKOUT — the certified scene_graph is the carrier every downstream stage must preserve.
+  const blockout = harness.toScene();
+  report.stages.blockout = { source: 'harness.toScene', objects: blockout.objects.length };
+
+  // VOXELIZE (inv1) — blockout/geometry → occupancy voxel. PENDING until injected.
+  if (typeof voxelize !== 'function') { report.stages.voxelize = { pending: true }; return report; }
+  const voxels = voxelize(blockout);
+  report.stages.voxelize = { done: true, cells: voxels?.cells ?? voxels?.length ?? null };
+
+  // DE-BOX / REALISTA (inv3) — voxel → realistic scene (mesh detail added, transforms preserved). PENDING until injected.
+  if (typeof deBox !== 'function') { report.stages.debox = { pending: true }; return report; }
+  const realista = deBox(voxels, blockout);
+  report.stages.debox = { done: true, objects: realista?.objects?.length ?? null };
+
+  // GATE — the realista pass MUST preserve the blockout's engineering data (GATES §440 / pass-parity).
+  const parity = checkPassParity(blockout, realista, gateOpts);
+  report.gate = parity;
+  report.stages.realista_gate = { ok: parity.ok, drifts: parity.drifts.length, missing: parity.missing.length, extra: parity.extra.length };
+  report.ok = parity.ok;
+  return report;
+}
