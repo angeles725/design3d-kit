@@ -69,6 +69,23 @@ export class OccupancyGrid {
   // release a prior reservation (RESERVED -> FREE only)
   release(box) { this._forEach(box, i => { if (this.cells[i] === CELL.RESERVED) this.cells[i] = CELL.FREE; }); return this; }
 
+  // INCREMENTAL update (for cache-invalidation-on-move — avoids a full gridFromScene rebuild per edit).
+  // clearObject: reset an object's BODY cells (only those still holding `code`) back to FREE. Bodies never
+  // overlap, so this is exact for the body. It does NOT clear the object's service CLEARANCE overlay
+  // (clearances can be shared between neighbours); if precise clearance invalidation is needed, re-derive
+  // clearances after the move (markClearance) — a stale CLEARANCE cell only makes a query over-conservative
+  // (never a false-clear), so it is a safe residue.
+  clearObject(o, code = CELL.OCCUPIED) {
+    this._forEach(OccupancyGrid.aabbOf(o), i => { if (this.cells[i] === code) this.cells[i] = CELL.FREE; });
+    return this;
+  }
+  // moveObject: clear the old body, mark the new one. Same code on both (default OCCUPIED).
+  moveObject(oldObj, newObj, code = CELL.OCCUPIED) {
+    this.clearObject(oldObj, code);
+    this.mark(OccupancyGrid.aabbOf(newObj), code);
+    return this;
+  }
+
   stats() {
     const s = {}; for (const k of Object.keys(CELL)) s[k] = 0;
     const byCode = Object.fromEntries(Object.entries(CELL).map(([k, v]) => [v, k]));
