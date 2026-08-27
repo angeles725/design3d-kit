@@ -323,6 +323,17 @@ DECLARES a threshold but records no measurement fails loud (like a missing `glob
 un-recorded `color_delta_e00`); a spec that declares none of these fields leaves prior gate behaviour
 byte-identical.
 
+> **ENFORCEMENT STATUS (v1.18).** The measuring MODULES ship and are tested — `clash-detect.mjs`,
+> `geom-metrics.mjs`, `view-variance.mjs`, `fitting-select.mjs`, `duct-router.mjs` (all green). They
+> MEASURE and record (`mechanical.clash`, `mechanical.topology`, per-view arrays, …). Wiring the
+> `assets/gate-state.mjs` DERIVER to auto-fail on the new spec-declared thresholds
+> (`clearanceRisk.pClashMax`, per-device `maxDrawCalls`/`maxVisibleTriangles`, the topology hard-fails)
+> — exactly as the ΔE00 `deltaE00Max` precedent does — is the ONE remaining IMPLEMENTATION unit, deferred
+> so the deriver's characterization suite gets its own guarded change rather than being rushed into this
+> multi-delta commit. Until then these gates are ENFORCED BY THE REVIEWER READING the recorded numbers
+> (a critical mechanical zero caps the score per the existing "critical feature below threshold" rule),
+> not yet auto-derived. Track this as the first v1.18.x follow-up.
+
 ### Deterministic SPATIAL / CLASH gate (mechanical)
 
 `library/harness/clash-detect.mjs` — `detectClashes({groups, allowedContact, tolerance}) →
