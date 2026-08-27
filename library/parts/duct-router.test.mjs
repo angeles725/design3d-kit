@@ -83,3 +83,56 @@ test('maxExpansions cap returns found:false instead of hanging', () => {
   assert.equal(r.found, false);
   assert.ok(r.expansions <= 5);
 });
+
+// --- Drainage slope (MATH/QC §3.1 #14): condensate/gravity runs must descend at >= minGrade ---
+const dBounds = { min: [0, 0, 0], max: [6, 6, 3] };
+const dStep = 0.25;
+const highY = [0.125, 5.875, 1.125]; // start: high on the slope axis (y)
+const lowY = [5.875, 0.125, 1.125];  // end: low on the slope axis, offset horizontally in x
+
+test('slope: drainage run descends monotonically and meets minGrade', () => {
+  const slope = { axis: 'y', minGrade: 0.02, monotonic: true };
+  const r = routeDuct({ start: highY, end: lowY, obstacles: [], bounds: dBounds, gridStep: dStep, bendPenalty: 5, slope });
+  assert.ok(r.found, 'feasible drainage path found');
+  // (a) monotonic: every waypoint's y is <= the previous one (never runs uphill)
+  for (let i = 1; i < r.waypoints.length; i++)
+    assert.ok(r.waypoints[i][1] <= r.waypoints[i - 1][1] + 1e-9, `y rose at waypoint ${i}`);
+  // net descent >= minGrade * horizontal (x+z) length
+  let horiz = 0;
+  for (let i = 1; i < r.waypoints.length; i++) {
+    const dx = Math.abs(r.waypoints[i][0] - r.waypoints[i - 1][0]);
+    const dz = Math.abs(r.waypoints[i][2] - r.waypoints[i - 1][2]);
+    horiz += dx + dz;
+  }
+  const netDescent = r.waypoints[0][1] - r.waypoints[r.waypoints.length - 1][1];
+  assert.ok(netDescent + 1e-9 >= slope.minGrade * horiz, `grade not met: descent ${netDescent} < ${slope.minGrade * horiz}`);
+  console.log(`  drainage: ${r.waypoints.length} wp, descent=${netDescent.toFixed(3)} m over horiz=${horiz.toFixed(3)} m (grade ${(netDescent / horiz).toFixed(3)} >= ${slope.minGrade})`);
+});
+
+test('slope: infeasible (end above start, monotonic) returns found:false, not a flat path', () => {
+  const slope = { axis: 'y', minGrade: 0.02, monotonic: true };
+  const r = routeDuct({ start: lowY, end: highY, obstacles: [], bounds: dBounds, gridStep: dStep, bendPenalty: 5, slope });
+  assert.equal(r.found, false);
+  assert.deepStrictEqual(r.waypoints, []);
+});
+
+test('slope: descending "+" flips downhill to increasing-coord (no start/end swap needed)', () => {
+  // Same geometry as the feasible case but expressed with the low-coord end as START and descending:'+'.
+  const slope = { axis: 'y', minGrade: 0.02, monotonic: true, descending: '+' };
+  const r = routeDuct({ start: lowY, end: highY, obstacles: [], bounds: dBounds, gridStep: dStep, bendPenalty: 5, slope });
+  assert.ok(r.found, 'feasible with descending:+');
+  // downhill is now increasing y: every waypoint y >= previous
+  for (let i = 1; i < r.waypoints.length; i++)
+    assert.ok(r.waypoints[i][1] >= r.waypoints[i - 1][1] - 1e-9, `y fell at waypoint ${i} under descending:+`);
+  // and the '-' convention on the SAME direction (start low, end high, default '-') must be infeasible
+  const rNeg = routeDuct({ start: lowY, end: highY, obstacles: [], bounds: dBounds, gridStep: dStep, bendPenalty: 5, slope: { axis: 'y', minGrade: 0.02, monotonic: true } });
+  assert.equal(rNeg.found, false, 'default descending:- is infeasible for the same start/end');
+});
+
+test('slope: deterministic across runs', () => {
+  const opts = { start: highY, end: lowY, obstacles: [], bounds: dBounds, gridStep: dStep, bendPenalty: 5, slope: { axis: 'y', minGrade: 0.02, monotonic: true } };
+  const r1 = routeDuct(opts), r2 = routeDuct(opts);
+  assert.deepStrictEqual(r1.waypoints, r2.waypoints);
+  assert.deepStrictEqual(r1.bends, r2.bends);
+  assert.equal(r1.cost, r2.cost);
+});

@@ -87,9 +87,16 @@ function buildGrid(bounds, gridStep, obstacles, inflate) {
 }
 
 // -------- A* over (cell, incomingDir) --------------------------------------------------------------
-function astar(grid, start, end, { startDir, bendPenalty, stepCost, maxExpansions }) {
+function astar(grid, start, end, { startDir, bendPenalty, stepCost, maxExpansions, slope }) {
   const { ny, nz, occ, idx, inBounds } = grid;
   const h = (x, y, z) => (Math.abs(x - end[0]) + Math.abs(y - end[1]) + Math.abs(z - end[2])) * stepCost;
+  // Drainage slope: a monotonic feasibility filter on the slope axis. `descending` sets which coord
+  // direction is downhill: '-' (default) = decreasing coord, '+' = increasing coord. monotonic (default
+  // when slope given) forbids any uphill move, so the path never runs against the drain. minGrade is
+  // enforced globally by routeDuct's pre/post checks (net descent >= minGrade * horizontal length).
+  const slopeAxis = slope ? { x: 0, y: 1, z: 2 }[slope.axis] : -1;
+  const monotonic = slope ? (slope.monotonic !== false) : false;
+  const downDir = slope && slope.descending === '+' ? 1 : -1;
   const skey = (x, y, z, d) => ((x * ny + y) * nz + z) * 7 + d; // d in [0..5], or 6 for "no incoming dir"
   const sd = startDir ? dirIndex(startDir) : 6;
   const g = new Map(), came = new Map(), node = new Map();
@@ -107,6 +114,7 @@ function astar(grid, start, end, { startDir, bendPenalty, stepCost, maxExpansion
     for (let di = 0; di < 6; di++) {
       const nX = cx + DIRS[di][0], nY = cy + DIRS[di][1], nZ = cz + DIRS[di][2];
       if (!inBounds(nX, nY, nZ) || occ[idx(nX, nY, nZ)]) continue;
+      if (monotonic && ([nX, nY, nZ][slopeAxis] - [cx, cy, cz][slopeAxis]) * downDir < 0) continue; // no uphill
       const turned = (cd !== 6 && di !== cd) ? 1 : 0; // no penalty for the very first move when startDir unset
       const ng = gc + stepCost + bendPenalty * turned;
       const nk = skey(nX, nY, nZ, di);
@@ -156,22 +164,51 @@ function simplifyCells(cells) {
  * @param {number} [o.maxExpansions=200000]  A* pop cap (returns found:false if exceeded).
  * @param {number[]} [o.startDir]            optional initial facing [dx,dy,dz] (a leaving-turn is penalized).
  * @param {number} [o.stepCost=1]            cost per cell traversed.
+ * @param {{axis:'x'|'y'|'z',minGrade:number,monotonic?:boolean,descending?:'+'|'-'}} [o.slope]  drainage
+ *          constraint. `descending` sets the downhill coord direction: '-' (default) = decreasing coord,
+ *          '+' = increasing coord. monotonic (default true) forbids uphill moves on `axis`; minGrade
+ *          requires net descent >= minGrade * horizontal path length. found:false when infeasible (e.g.
+ *          end uphill of start under monotonic). Omit `slope` for the current unconstrained behavior.
  * @returns {{found:boolean, waypoints:number[][], bends:{position:number[],inDir:number[],outDir:number[],turnAngle:number}[], length:number, cost:number, expansions:number}}
  *          waypoints in world coords (cell centers); `bends` is per-turn metadata (one entry per elbow),
  *          so bends.length is the elbow count; length = world length of the orthogonal path.
  */
-export function routeDuct({ start, end, obstacles = [], bounds, gridStep = 0.25, bendPenalty = 5, radius = 0, clearance = 0, maxExpansions = 200000, startDir = null, stepCost = 1 }) {
+export function routeDuct({ start, end, obstacles = [], bounds, gridStep = 0.25, bendPenalty = 5, radius = 0, clearance = 0, maxExpansions = 200000, startDir = null, stepCost = 1, slope = null }) {
   if (!bounds) throw new Error('routeDuct: bounds { min:[x,y,z], max:[x,y,z] } is required');
   const grid = buildGrid(bounds, gridStep, obstacles, radius + clearance);
   const s = grid.cellOfWorld(start), e = grid.cellOfWorld(end);
   grid.occ[grid.idx(s[0], s[1], s[2])] = 0; // force endpoints free
   grid.occ[grid.idx(e[0], e[1], e[2])] = 0;
-  const res = astar(grid, s, e, { startDir, bendPenalty, stepCost, maxExpansions });
-  if (!res.found) return { found: false, waypoints: [], bends: [], length: 0, cost: 0, expansions: res.popped };
+  const fail = { found: false, waypoints: [], bends: [], length: 0, cost: 0, expansions: 0 };
+  // Slope pre-check on the snapped endpoints: is there enough available drop to meet minGrade over the
+  // minimum (Manhattan) horizontal travel? If not — including end above start under monotonic — infeasible.
+  if (slope) {
+    const ax = { x: 0, y: 1, z: 2 }[slope.axis];
+    const downDir = slope.descending === '+' ? 1 : -1;
+    const sw = grid.center(s[0], s[1], s[2]), ew = grid.center(e[0], e[1], e[2]);
+    const avail = downDir * (ew[ax] - sw[ax]); // descent available start->end in the downhill direction
+    const horizMin = [0, 1, 2].filter((i) => i !== ax).reduce((a, i) => a + Math.abs(sw[i] - ew[i]), 0);
+    if (avail + 1e-9 < (slope.minGrade || 0) * horizMin) return fail;
+  }
+  const res = astar(grid, s, e, { startDir, bendPenalty, stepCost, maxExpansions, slope });
+  if (!res.found) return { ...fail, expansions: res.popped };
   const wpCells = simplifyCells(res.cells);
   const waypoints = wpCells.map((c) => grid.center(c[0], c[1], c[2]));
   let length = 0;
   for (let i = 1; i < waypoints.length; i++) length += len3(sub3(waypoints[i], waypoints[i - 1]));
+  // Slope post-check: the actual path's net descent must cover minGrade * its horizontal length (an
+  // obstacle-forced horizontal detour could otherwise under-grade the run).
+  if (slope) {
+    const ax = { x: 0, y: 1, z: 2 }[slope.axis];
+    const downDir = slope.descending === '+' ? 1 : -1;
+    let horizLen = 0;
+    for (let i = 1; i < waypoints.length; i++) {
+      const d = sub3(waypoints[i], waypoints[i - 1]);
+      horizLen += Math.abs(d[(ax + 1) % 3]) + Math.abs(d[(ax + 2) % 3]);
+    }
+    const netDescent = downDir * (waypoints[waypoints.length - 1][ax] - waypoints[0][ax]);
+    if (netDescent + 1e-9 < (slope.minGrade || 0) * horizLen) return { ...fail, expansions: res.popped };
+  }
   return { found: true, waypoints, bends: buildBends(waypoints), length, cost: res.cost, expansions: res.popped };
 }
 
