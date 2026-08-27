@@ -30,7 +30,13 @@ export function boundaryLoops(index) {
   const val = new Map();               // "a_b" (a<b) -> valence
   const ekey = (p, q) => (p < q ? `${p}_${q}` : `${q}_${p}`);
   for (let i = 0; i < index.length; i += 3) {
-    const t = [index[i], index[i + 1], index[i + 2]];
+    const a = index[i], b = index[i + 1], c = index[i + 2];
+    // Skip a DEGENERATE triangle (a repeated vertex ⇒ zero-area, with a self-edge that would pollute the
+    // boundary count). After weld-by-position, a triangle whose vertices collapsed to one point (e.g. a
+    // class-filter that hides geometry by collapsing it onto its centroid) becomes a===b===c or a pair
+    // equal — it contributes no real boundary, so it must not be counted.
+    if (a === b || b === c || a === c) continue;
+    const t = [a, b, c];
     for (let k = 0; k < 3; k++) { const kk = ekey(t[k], t[(k + 1) % 3]); val.set(kk, (val.get(kk) || 0) + 1); }
   }
   // Boundary graph: adjacency among vertices joined by an OPEN (valence-1) edge.
@@ -218,6 +224,13 @@ export function segmentTrianglesByRunId(index, runId) {
  *   3. VALIDITY DEPENDS ON STRUCTURE: per-run segmentation is correct ONLY when each run is a SEPARATE
  *      self-closed shell. On a CONTINUOUS manifold it false-positives at every junction seam — use the
  *      whole-mesh `checkFusedMeshClosed` there instead.
+ *   4. DEGREE IS A LABEL, NOT A TOPOLOGY PREDICTOR on a constructor-closed-terminal viewer. If the builder
+ *      closes every terminal (e.g. system-3d's `pushBox` emits 6 faces INCLUDING both end caps), then the
+ *      expected boundary is 0 ABSOLUTE for EVERY run — a free end (degree<2) is CLOSED by geometry, not open.
+ *      Do NOT wire `degreesByRun`/`expectedOpenLoopsFromDegrees` as a topology-open assertion against such a
+ *      mesh — it would false-flag every closed terminal. There, `checkFusedMeshClosed` (expect 0) is the
+ *      verifier, and degree is only for LABELLING the clip work-list (a through-run [2,2] cut vs a terminal
+ *      [1,x] cut). The degree→free-ends model applies only to viewers whose ducts have genuinely OPEN ends.
  * What it legitimately does (welded, separate-shell inputs): flags a run whose shell is genuinely
  * TOPOLOGICALLY OPEN — a missing cap, e.g. the pre-B1 constructor-open lofts (`accessory-open`). It is a
  * closedness / regression check, NOT a clip-cut or see-through detector.
