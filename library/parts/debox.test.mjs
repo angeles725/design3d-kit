@@ -80,7 +80,7 @@ test('material trap: packed-map scalars stay at 1, satin roughness (not chrome)'
   assert.ok(m.envMapIntensity <= 1.0);
 });
 
-test('runs on the real V1 before-blockout fixture with 0 drift + 0 unmapped', async () => {
+test('runs on the shared duct-network fixture (0 drift, 0 unmapped; skips until it is on master)', async () => {
   const fs = await import('node:fs/promises');
   const url = new URL('../harness/__fixtures__/duct-network.json', import.meta.url);
   let raw; try { raw = await fs.readFile(url, 'utf8'); } catch { return; } // skip if fixture absent
