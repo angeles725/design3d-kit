@@ -400,3 +400,77 @@ test('block-def overrides the catalog default (a real drawing footprint beats a 
   assert.equal(o.size[0], 4.0);                      // from the drawing, not catalog 3.0
   assert.ok(o.source.sizeSource.startsWith('block-def'));
 });
+
+const circleDxf = `0
+SECTION
+2
+ENTITIES
+0
+CIRCLE
+8
+DUCT
+10
+5.0
+20
+5.0
+30
+0.0
+40
+1.0
+0
+ELLIPSE
+8
+DUCT
+10
+2.0
+20
+2.0
+30
+0.0
+11
+1.0
+21
+0.0
+31
+0.0
+40
+0.5
+41
+0.0
+42
+6.283185307
+0
+ENDSEC
+0
+EOF`;
+const csg = readDxf(circleDxf);
+
+test('CIRCLE parses to geometry (center + radius) and enters the room extents', () => {
+  const c = csg.geometry.find(g => g.kind === 'circle');
+  assert.deepEqual(c.center, [5, 5, 0]);
+  assert.equal(c.radius, 1);
+  assert.equal(c.layer, 'DUCT');
+  assert.equal(csg.room.size[0], 5); // bbox x: ellipse min 1 (2−|major|=2−1) → circle max 6 = span 5
+});
+
+test('ELLIPSE parses to geometry (center, major axis, ratio)', () => {
+  const el = csg.geometry.find(g => g.kind === 'ellipse');
+  assert.deepEqual(el.center, [2, 2, 0]);
+  assert.deepEqual(el.majorEnd, [1, 0, 0]);
+  assert.equal(el.ratio, 0.5);
+});
+
+test('geometryToPolylines samples a CIRCLE as a closed loop, all points at radius r', () => {
+  const lines = geometryToPolylines(csg, { arcSegments: 6 });
+  const circle = lines.find(l => l.length > 6 && Math.abs(Math.hypot(l[0][0] - 5, l[0][1] - 5) - 1) < 1e-9);
+  assert.ok(circle, 'circle sampled');
+  for (const p of circle) assert.ok(Math.abs(Math.hypot(p[0] - 5, p[1] - 5) - 1) < 1e-9, 'on the circle');
+  assert.deepEqual(circle[0].map(v => +v.toFixed(6)), [6, 5, 0]); // t=0 → (cx+r, cy)
+});
+
+test('geometryToPolylines samples an ELLIPSE (major 1, minor 0.5)', () => {
+  const lines = geometryToPolylines(csg, { arcSegments: 8 });
+  const ell = lines.find(l => l.some(p => Math.abs(p[0] - 3) < 1e-6 && Math.abs(p[1] - 2) < 1e-6)); // t=0 → (2+1,2)
+  assert.ok(ell, 'ellipse sampled through its major vertex (3,2)');
+  assert.ok(ell.some(p => Math.abs(p[0] - 2) < 1e-6 && Math.abs(p[1] - 2.5) < 1e-6), 'minor vertex (2,2.5)');
+});
