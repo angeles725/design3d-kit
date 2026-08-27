@@ -129,6 +129,22 @@ flag  = divergenceMm ≥ snapDivergenceGateMm
   one-line **config**, not a hardcoded constant, so swapping provisional→measured is a value change only.
   Intake just emits `raw`+`deltaMm`.
 
+### `fieldProvenance.width` ownership — ONE writer, no clobber (RATIFIED inv3+inv4)
+
+Two sources can measure width — a WxH **label** (cota-binding, inv4) and the parallel **flank** line-work
+(duct-vectorize, inv3). To prevent two modules writing the same envelope, the **flank step (inv3) is the
+SINGLE writer** of `fieldProvenance.width`, downstream of cota-binding, via `mergeWidthProvenance`:
+
+- **label-only run:** pass the label width through unchanged — `v = label`, `prov: 'measured'`.
+- **flank-only run:** overwrite the label's `absent-in-source` with the flank measurement — `prov: 'measured'`.
+- **both-run** (label AND flank): `v = label nominal` (design intent), `raw = flank-measured`,
+  `snap = snapToNominal(raw)`, `deltaMm = |raw − snap|·1000`; PLUS a separate discrepancy flag when
+  `|raw − label| > 20 mm` — this is the **WIDTH_GATE axis** (raw-vs-label), DISTINCT from snap-divergence
+  (raw-vs-nominal-on-ladder). Revisor's 82.5-vs-105 case is a WIDTH_GATE discrepancy, not a snap one.
+
+cota-binding never writes width for a run the flank step touches ⇒ no clobber, 100% coverage between the
+two sources.
+
 ## 4. Source-kind (P1 / P2 — fail-loud, not silent-empty)
 
 Scene-level `provenance.sourceKind` classifies WHERE the geometry came from, so an empty design-intent
