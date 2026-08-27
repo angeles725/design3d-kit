@@ -11,6 +11,8 @@ import {
   classifyContact,
   gateFromClashes,
   detectClashes,
+  isElevationAdvisory,
+  applyElevationAdvisory,
 } from './clash-detect.mjs';
 
 // ---- PURE CORE -------------------------------------------------------------------------------
@@ -133,4 +135,37 @@ test('detectClashes: non-contacting 45deg corner — no fabricated clash (gate P
   assert.equal(r.clashes.length, 0);
   const pair = r.pairs[0];
   assert.equal(pair.contact, 'clear');                 // not even 'touching'
+});
+
+// ---- P8 elevation-band advisory (pure core, no three) ----------------------------------------
+const absentTop = (bod) => ({ bod: { v: bod, prov: 'measured' }, topExtent: { v: null, prov: 'absent-in-source' } });
+
+test('isElevationAdvisory: both tops absent + BODs within plenum band => advisory', () => {
+  assert.equal(isElevationAdvisory(absentTop(3.20), absentTop(3.25), 0.1), true);  // |Δbod|=0.05 <= 0.1
+  assert.equal(isElevationAdvisory(absentTop(3.20), absentTop(3.40), 0.1), false); // |Δbod|=0.20 > 0.1 (different bands)
+});
+
+test('isElevationAdvisory: a KNOWN vertical extent disqualifies the advisory (real clash stays a clash)', () => {
+  const knownTop = { bod: { v: 3.20, prov: 'measured' }, topExtent: { v: 0.40, prov: 'measured' } };
+  assert.equal(isElevationAdvisory(knownTop, absentTop(3.22), 0.1), false); // one extent known => NOT ambiguous
+  assert.equal(isElevationAdvisory(absentTop(3.20), absentTop(3.22), 0.1), true);
+});
+
+test('isElevationAdvisory: needs measured BODs to place the band; missing/absent bod => false', () => {
+  const noBod = { topExtent: { v: null, prov: 'absent-in-source' } };
+  assert.equal(isElevationAdvisory(noBod, absentTop(3.20), 0.1), false);
+  assert.equal(isElevationAdvisory(undefined, absentTop(3.20)), false);
+});
+
+test('applyElevationAdvisory: only overlapping is downgradeable; clear/touching pass through', () => {
+  const A = absentTop(3.20), B = absentTop(3.24);
+  assert.equal(applyElevationAdvisory('overlapping', A, B, 0.1), 'advisory');
+  assert.equal(applyElevationAdvisory('overlapping', absentTop(3.2), absentTop(3.9), 0.1), 'overlapping'); // out of band => real clash
+  assert.equal(applyElevationAdvisory('touching', A, B, 0.1), 'touching'); // a weld is never an advisory
+  assert.equal(applyElevationAdvisory('clear', A, B, 0.1), 'clear');
+});
+
+test('gateFromClashes: advisories are NOT clashes, so a pure-advisory scene still PASSes', () => {
+  assert.equal(gateFromClashes([]), 'PASS');                       // advisories are surfaced separately, never here
+  assert.equal(gateFromClashes([{ a: 'X', b: 'Y' }]), 'FAIL');     // a real clash still fails
 });
