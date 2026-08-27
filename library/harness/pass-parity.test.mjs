@@ -69,3 +69,42 @@ test('deterministic', () => {
   const b = scene([elbow({ center: [2.02, 0, 0] })]);
   assert.equal(JSON.stringify(checkPassParity(a, b)), JSON.stringify(checkPassParity(a, b)));
 });
+
+// ---- GATES §440: size + rotation drift (i2 review) ----
+const box = (over = {}) => ({ id: 'CH-01', type: 'chiller', center: [3.5, 8, 0.9], size: [3, 1.2, 1.8],
+  rotation: [0, 0, 0], ports: { CHWS: [1.5, -0.6, 0.5] }, portDN: { CHWS: 0.2 }, ...over });
+
+test('size drift: a proxy larger than its blockout bbox is caught (invalidates clearance)', () => {
+  const r = checkPassParity(scene([box()]), scene([box({ size: [3.1, 1.2, 1.8] })]));
+  assert.equal(r.ok, false);
+  const d = r.drifts.find((x) => x.field === 'size');
+  assert.ok(d && Math.abs(d.delta - 0.1) < 1e-9);
+});
+
+test('size within tol → ok', () => {
+  assert.equal(checkPassParity(scene([box()]), scene([box({ size: [3.0005, 1.2, 1.8] })])).ok, true);
+});
+
+test('rotation drift: a re-oriented proxy (ports face wrong way) is caught', () => {
+  const r = checkPassParity(scene([box()]), scene([box({ rotation: [0, Math.PI / 2, 0] })]));
+  assert.equal(r.ok, false);
+  assert.ok(r.drifts.some((x) => x.field === 'rotation'));
+});
+
+test('rotation within rotTol → ok', () => {
+  assert.equal(checkPassParity(scene([box()]), scene([box({ rotation: [0, 5e-5, 0] })]), { rotTol: 1e-4 }).ok, true);
+});
+
+test('absent size/rotation fields are ignored (backward compatible with duct scenes)', () => {
+  const s = scene([{ id: 'ELB-0001', type: 'elbow', center: [2, 0, 0], ports: { A: [-0.15, 0, 0] }, portDN: { A: 0.3 } }]);
+  assert.equal(checkPassParity(s, s).ok, true); // no size/rotation → no size/rotation drift
+});
+
+test('shared fixture: duct-network.json parses and self-compares with zero drift', async () => {
+  const fs = await import('node:fs/promises');
+  const url = new URL('./__fixtures__/duct-network.json', import.meta.url);
+  const fixture = JSON.parse(await fs.readFile(url, 'utf8'));
+  assert.ok(fixture.objects.length >= 6);
+  const r = checkPassParity(fixture, fixture);
+  assert.equal(r.ok, true); // identical → zero drift (the reference is internally consistent)
+});
