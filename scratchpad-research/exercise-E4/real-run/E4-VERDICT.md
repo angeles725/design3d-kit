@@ -3,6 +3,12 @@
 **Result: FIRST MULTI-AGENT NON-NULL.** naive-parallel = score 6 / FAIL (2 hard overlaps);
 lock-mediated = score 10 / PASS, 6/6 placed, unplaced=[].
 
+**Provenance: MEASURED, confirmed first-hand.** Both creadores independently confirmed their
+submitted sequences byte-for-byte: creador1 (DISCIPLINE 1, chilled-water plant) — and explicitly
+confirmed produced BLIND (read only BRIEF.md + CREADOR-E4-PROMPT.md, never opened the merged/agent
+JSONs); creador2 (DISCIPLINE 2, air side). Independently re-scored by investigador4 (same numbers).
+NOT staged fixtures. Dispatched by investigador1, scored by investigador2.
+
 ## Numbers (shared verify.mjs)
 | condition | objects | hard | soft | score | verdict |
 |---|---|---|---|---|---|
