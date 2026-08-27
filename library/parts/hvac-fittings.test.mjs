@@ -1,6 +1,6 @@
 // Pure-Node test for parts/hvac-fittings.mjs — imports only the pure core (no three).
 // Run: node library/parts/hvac-fittings.test.mjs   (exit 0 = all green)
-import { elbowCenterline, elbowPortFrames, reducerProfile } from './hvac-fittings.mjs';
+import { elbowCenterline, elbowPortFrames, reducerProfile, elbowPlacement } from './hvac-fittings.mjs';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; } else { fail++; console.error('FAIL: ' + msg); } }
@@ -61,6 +61,38 @@ threw(() => elbowCenterline(1.5, Math.PI / 2, 2.5), 'elbowCenterline rejects non
   ok(!reducerProfile(0.2, -0.1, 0.3).valid, 'reducer rejects negative r2');
   ok(!reducerProfile(0.2, 0.15, 0).valid, 'reducer rejects length 0');
 }
+
+// --- elbowPlacement: the proven router-bend placement math (creador1 full-chain PoC) --------------
+{
+  // 90° bend at corner (1,0,0), travelling +X then turning to +Y. R = 1.5·DN150 bore ≈ 0.225.
+  const R = 0.225;
+  const bend = { position: [1, 0, 0], inDir: [1, 0, 0], outDir: [0, 1, 0], turnAngle: 90 };
+  const pl = elbowPlacement(bend, R);
+  near(pl.arcAngle, Math.PI / 2, 1e-12, '90° bend -> arcAngle π/2');
+  near(pl.setback, R, 1e-12, '90° setback T = R·tan(45°) = R');
+  // tangent points: start T back along inDir, end T along outDir
+  near(pl.startTangent[0], 1 - R, EPS, 'startTangent x = corner - inDir·T');
+  near(pl.startTangent[1], 0, EPS, 'startTangent y = 0');
+  near(pl.endTangent[0], 1, EPS, 'endTangent x = corner x');
+  near(pl.endTangent[1], R, EPS, 'endTangent y = corner + outDir·T');
+  // turn-plane normal = inDir × outDir = +Z; localX = inDir × normal = (1,0,0)×(0,0,1) = (0,-1,0)
+  near(pl.normal[2], 1, EPS, 'normal = +Z for +X->+Y turn');
+  near(pl.localX[1], -1, EPS, 'localX = inDir × normal = (0,-1,0)');
+  // origin so local (R,0,0) maps to startTangent: origin = A - localX·R = (1-R, R, 0)
+  near(pl.origin[0], 1 - R, EPS, 'origin x');
+  near(pl.origin[1], R, EPS, 'origin y = -localX_y·R = +R');
+  near(pl.origin[2], 0, EPS, 'origin z = 0 (planar bend)');
+}
+{
+  // 45° bend: T = R·tan(22.5°) < R; accepts Vector3-like inputs {x,y,z}
+  const R = 0.3;
+  const bend = { position: { x: 0, y: 0, z: 0 }, inDir: { x: 1, y: 0, z: 0 }, outDir: { x: Math.cos(Math.PI / 4), y: Math.sin(Math.PI / 4), z: 0 }, turnAngle: 45 };
+  const pl = elbowPlacement(bend, R);
+  near(pl.arcAngle, Math.PI / 4, 1e-12, '45° bend -> arcAngle π/4');
+  near(pl.setback, R * Math.tan(Math.PI / 8), 1e-12, '45° setback T = R·tan(22.5°)');
+  ok(pl.setback < R, '45° setback < R (sharper-than-90 has less setback)');
+}
+threw(() => elbowPlacement({ position: [0, 0, 0], inDir: [1, 0, 0], outDir: [0, 1, 0], turnAngle: 90 }, 0), 'elbowPlacement rejects bendRadius 0');
 
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail > 0 ? 1 : 0);
