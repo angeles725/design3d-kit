@@ -36,3 +36,28 @@ Lane: BIM cluster. Shallow-cloned and inspected ACTUAL source, not READMEs.
 - Paths: optional new `references/TRACK-*` intake note or `references/PIPELINE.md §Triage` (Route: "read this client's IFC");
   gate behind a real "ingest a real .ifc" need, alongside the existing DWG ladder.
 - Cross-ref: coordinate with three.js corpus `threejs-block32.md` (BIM/building shells) per i1.
+
+## DELTA — B2: OPTIONAL IFC EXPORT track (emit, not just read)  [ADAPT — optional]
+The doc's real interop endpoint (lines ~200-222, ~6315-6331) is the kit EMITTING IFC so downstream BIM tools
+know elements are CONNECTED (ports), not merely visually touching: `IfcPipeSegment`, `IfcPipeFitting`,
+`IfcDuctSegment`, and especially **`IfcDistributionPort`** (buildingSMART). web-ifc has a CONFIRMED write path
+(`CreateModel` / `WriteLine` / `WriteRawLineData` / `SaveModel` — verified in the BIM audit), so this is
+feasible with the SAME zero-dep, offline WASM we already adopt for intake.
+- Mapping: the kit's port/connection graph — the spatial engine's typed `connect(portA,portB)` relations (S1/S2)
+  plus `hvac-fittings` port frames (elbowPortFrames) — projects directly onto `IfcDistributionPort` +
+  segment/fitting entities. Our ports ALREADY carry position + direction (design §9a), which is what a
+  distribution port needs.
+- Verdict: ADAPT as an OPTIONAL export track, gated behind a real "hand this off to BIM/Revit" need (mirror the
+  intake gate). NOT default — most designs never leave the kit. Paths: `references/PIPELINE.md §Delivery` (an
+  optional IFC-emit step) + the same web-ifc WASM (MPL-2.0) used for intake.
+- Note: this is the OUTPUT twin of B1 (intake) and of ThatOpen's DxfExporter (2D DXF out); IFC-out carries the
+  connectivity graph, DXF-out carries 2D drawings — different downstream consumers.
+
+## Notes (completeness critic edges)
+- B3 — NVIDIA Isaac Sim builds occupancy maps FROM collision geometry (doc ~7435): REFERENCE-ONLY. It validates
+  the DETERMINISTIC (non-probabilistic) occupancy grid the Spatial World Model design chose — Isaac + OctoMap
+  both confirm rasterizing known volumes into an occupancy grid is standard practice. No adoption; concept only.
+- OUT-OF-SCOPE — BACnet / Niagara / BMS digital-twin endpoints (doc ~222/354/909-911/1633) are repeatedly named
+  as the FINAL target of the pipeline, but they are external building-automation PROTOCOLS, outside a 3D-design
+  kit's remit. Explicitly OUT OF SCOPE (documented as a decision, not an omission): the kit ends at the 3D/IFC
+  deliverable; wiring it to a live BMS is a separate integration concern.
