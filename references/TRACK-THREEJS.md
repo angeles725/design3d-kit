@@ -141,6 +141,29 @@ Found overlays OVERRIDE the generic defaults below.
 | interaction-ui | spec `ui_controls`: toggles, raycast hotspots, DOM overlays | threejs-interaction |
 | optimization | draws: BatchedMesh/merge · tris: LOD/simplify/instanceColor; re-probe vs budget. **Toggle-aware merge**: keep each TOGGLEABLE sub-group in its OWN merge pass — a merge that absorbs a toggleable group destroys the toggle's geometry (the button hides a group with no distinct geometry left) | threejs-fundamentals |
 
+## three.js is NOT a CAD (BREP) kernel — boundary & the OCCT-WASM escape hatch
+
+three.js has no BREP, no STEP/IGES, no generic edge fillet/chamfer, no exact trimmed NURBS surfaces.
+What it DOES give, natively and OFFLINE — enough for this kit's geometry:
+- **Exact circular arcs / conics** — `EllipseCurve`/`ArcCurve`, `TorusGeometry` arc param, the `NURBSCurve`
+  addon rational weight ([block51]). This is the exact answer for constant-radius HVAC elbows/tees/reducers:
+  `library/parts/hvac-fittings` (elbow centerline exactly on x²+y²=R²). Do NOT reach for a spline sweep
+  (`rmf-frames/makeSweptTube`) for a fixed-bend-radius fitting — a spline only approximates the arc ("melted
+  pipe") and drifts off the constant radius.
+- **Swept / revolved solids** — `TubeGeometry`/`ExtrudeGeometry`/`LatheGeometry` (`lathe-body`, `rmf-frames`),
+  soft-beveled housings (`superquadric`, `round-box-casing`).
+- **Mesh booleans** — three-bvh-csg ([block46], with its float-robustness ceiling: prefer 2D-union+extrude
+  for prismatic parts, mesh-CSG only for oblique/curved cut-ins; bake at BUILD time, never at render time).
+
+**When a real BREP kernel is genuinely required** (edge fillets on arbitrary solids, STEP/IGES round-trip,
+exact trimmed surfaces): the OpenCascade-WASM libs (Replicad MIT is the cleanest code-first; **Chili3D is
+AGPL — avoid for a reusable/commercial kit**) are an OPTIONAL, ONLINE, RESEARCH-ONLY track — NOT
+offline-compatible. Measured (ocjs.org, 2026-08): opencascade.js full WASM ≈ **48.9 MB** uncompressed /
+~9.1 MB brotli; smallest custom build ≈ **7.1 MB** / 2.4 MB compressed — ~9× the kit's entire 766 kB offline
+`dist/`, an opaque binary esbuild cannot inline, so it **fails `assertNoNetwork`** / the offline-single-file
+contract. Keep OCCT-WASM strictly to a Phase-2-style online product track, never the offline reconstruction
+default. (JSCAD is pure-JS but mesh-CSG only — no BREP, no exact arcs — so it adds nothing over three-bvh-csg.)
+
 ## QA commands (mechanical checks + capture) — verbatim
 
 Serve the REPO ROOT (not the design dir), run `node` FROM the repo root, and pass
