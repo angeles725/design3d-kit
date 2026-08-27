@@ -22,8 +22,14 @@ const eqDir = (u, v) => { const a = sgn(u), b = sgn(v); return a[0] === b[0] && 
 const cmpCoord = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 
 function sameSec(a, b) {
-  if (a.radius != null && b.radius != null) return a.radius === b.radius;
-  if (a.width != null && b.width != null) return a.width === b.width && (a.height ?? a.width) === (b.height ?? b.width);
+  const aRound = a.radius != null, bRound = b.radius != null;
+  const aRect = a.width != null, bRect = b.width != null;
+  if (aRound && bRound) return a.radius === b.radius;
+  if (aRect && bRect) return a.width === b.width && (a.height ?? a.width) === (b.height ?? b.width);
+  // FAIL-SAFE (i2 review #1): both cells carry NO comparable field → treat as same section, never
+  // catastrophically over-split a run into 1-cell fragments. A genuine round↔rect (or defined↔empty)
+  // boundary falls through to `false` = a real transition the reducer path models.
+  if (!aRound && !aRect && !bRound && !bRect) return true;
   return false;
 }
 
@@ -73,7 +79,9 @@ export function skeletonizeVoxelRuns(cellsInput, opts = {}) {
       let sec = secOf(seed);
       let count = 1; // cells in the current straight run (start included)
       usedEdge.add(ek(prev, cur));
-      for (;;) {
+      let guard = 0; // defensive termination bound (i2 review #3): a corner-free closed loop can't occur
+      for (;;) {     // for axis-aligned voxels (a ring has ≥4 corners), but never spin on malformed input.
+        if (++guard > occ.size + 1) break;
         count++;
         const cnb = nbrs(cur);
         const isNode = cnb.length !== 2;
@@ -83,7 +91,10 @@ export function skeletonizeVoxelRuns(cellsInput, opts = {}) {
         if (isNode || !next || dirBreak || secBreak) {
           emit(start, cur, sec, count);
           if (!isNode && next && (dirBreak || secBreak) && !usedEdge.has(ek(cur, next))) {
-            // corner or reducer boundary: cur is shared — start the next run here
+            // corner or reducer boundary: cur is shared — start the next run here.
+            // (i2 review #2) On a section boundary the shared cell `cur` is emitted as the UPSTREAM run's
+            // endpoint but the downstream run adopts cur's section — an intentional off-by-one on which
+            // run "owns" the boundary cell; the junction POSITION is exact, so fitting typing is unaffected.
             start = cur; prev = cur; dir = sub(next, cur); sec = secOf(cur); count = 1;
             usedEdge.add(ek(cur, next)); cur = next; continue;
           }

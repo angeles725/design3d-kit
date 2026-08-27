@@ -82,3 +82,9 @@ test('deterministic across runs', () => {
   const cells = [...line([0, 0, 0], [2, 0, 0]), ...line([2, 1, 0], [2, 2, 0])];
   assert.equal(JSON.stringify(skeletonizeVoxelRuns(cells)), JSON.stringify(skeletonizeVoxelRuns(cells)));
 });
+
+test('fail-safe (i2 #1): cells with empty sections do NOT over-split into 1-cell runs', () => {
+  const cells = [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]].map((c) => ({ c, section: {} }));
+  const { runs } = skeletonizeVoxelRuns(cells);
+  assert.equal(runs.length, 1); // empty sections compare equal → one straight run, not four fragments
+});
