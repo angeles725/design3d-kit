@@ -112,14 +112,14 @@ export class SpatialHarness {
     for (const c of this.connections) { const fa=c.from.split('.')[0], fb=c.to.split('.')[0];
       if (fa===id) out.add(fb); if (fb===id) out.add(fa); } return [...out]; }
   // ---- CREATE / TRANSFORM (guarded — reserve/commit, never overlaps) ----
-  placeEquipment({ id, type, size, center, clearance, ports, portDN }) {
+  placeEquipment({ id, type, size, center, clearance, ports, portDN, category, system, level, parameters }) {
     if (this.obj.has(id)) return { success: false, reason: `duplicate id ${id}` };        // RULE 002
     if (!size || size.length !== 3 || size.some(v => !(v>0))) return { success:false, reason:'bad size' }; // RULE 003
     const cand = { phys: aabb(center, size) };
     if (!this.#inBounds(cand.phys)) return { success: false, reason: 'out-of-bounds', suggestions: this.freeSpace(size) }; // RULE 009
     const c = this.#collides(cand, id);
     if (c) return { success: false, reason: `blocked by ${c.id} (${c.kind})`, suggestions: this.freeSpace(size) }; // RULE 001/007
-    this.obj.set(id, { id, type, size, center, clearance, ports, portDN });                 // RULE 004/010 commit
+    this.obj.set(id, { id, type, size, center, clearance, ports, portDN, category, system, level, parameters }); // RULE 004/010 commit + BIM passthrough
     return this.snapshot(id);
   }
   move(id, newCenter) {
@@ -177,11 +177,19 @@ export class SpatialHarness {
              count: this.obj.size };
   }
   // export the scene in the shared verify.mjs schema
-  toScene() { return { room: { size: this.room }, objects: [...this.obj.values()].map(o => ({ id:o.id, size:o.size, center:o.center, ...(o.clearance?{clearance:o.clearance}:{}), ...(o.ports?{ports:o.ports}:{}), ...(o.portDN?{portDN:o.portDN}:{}) })) }; }
+  toScene() { return { room: { size: this.room }, objects: [...this.obj.values()].map(o => ({ id:o.id, size:o.size, center:o.center, ...(o.clearance?{clearance:o.clearance}:{}), ...(o.ports?{ports:o.ports}:{}), ...(o.portDN?{portDN:o.portDN}:{}), ...(o.type?{type:o.type}:{}), ...(o.category?{category:o.category}:{}), ...(o.system?{system:o.system}:{}), ...(o.level!=null?{level:o.level}:{}), ...(o.parameters&&Object.keys(o.parameters).length?{parameters:o.parameters}:{}) })) }; }
   // ---- LOAD an already-validated scene (inverse of toScene; loads committed state, does not re-place) ----
   static fromScene(scene, opts = {}) {
     const h = new SpatialHarness(scene.room, opts);
-    for (const o of (scene.objects || [])) h.obj.set(o.id, { id:o.id, type:o.type, size:o.size, center:o.center, clearance:o.clearance, ports:o.ports, portDN:o.portDN });
+    for (const o of (scene.objects || [])) h.obj.set(o.id, { id:o.id, type:o.type, size:o.size, center:o.center,
+      clearance:o.clearance, ports:o.ports, portDN:o.portDN, category:o.category, system:o.system, level:o.level, parameters:o.parameters });
+    // auto-connect: rehydrate the piped network from a runs/connections list — inv3 ductNetworkToScene emits
+    // {run,a,b}; a generic {from,to} also works. "free:<runId>:<end>" endpoints stay unconnected (equipment side).
+    for (const c of (scene.connections || scene.runs || [])) {
+      const a = c.a ?? c.from, b = c.b ?? c.to;
+      if (!a || !b || String(a).startsWith('free:') || String(b).startsWith('free:')) continue;
+      h.connectPorts(a, b);
+    }
     return h;
   }
 }
