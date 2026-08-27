@@ -129,3 +129,75 @@ export function ductNetworkToScene(runs) {
   }
   return { objects, connections };
 }
+
+// ---- increment 3: FLANK-WIDTH derivation (Revisor retro P4). ------------------------------------------
+// For the ~38% of runs where inv4's label-binding emits width {prov:'absent-in-source'} (no WxH cota), the
+// width must be MEASURED from the raw parallel flank line-work. Revisor's bug: the extractor picked the
+// INTERIOR line pair (82.5 mm) instead of the real EXTERIOR pair (~105 mm), and the imperial nominal-snap
+// then hid the ~20 mm error because only the SNAPPED value was exposed, not the raw. Two fixes here:
+//   (1) measure the EXTERIOR span (the OUTERMOST flank pair = max-min perpendicular offset), never an inner
+//       pair; and
+//   (2) emit the full ratified envelope {v, prov, raw, snap, deltaMm} so `raw` and `deltaMm=|raw-snap|·1000`
+//       survive downstream — that is what reveals a bad measurement even when the snap lands near-right, and
+//       it is the histogram data Revisor uses to fix the snap-divergence gate value for the whole team.
+// pass-parity P3 already guards this envelope under §440. Pure, deterministic, zero-dep.
+
+// Nominal ladders (metres). Imperial default (Revisor's project is imperial); pass opts.ladder or
+// opts.system:'metric' to override. Values are the standard nominal duct sizes to snap a raw span to.
+export const NOMINAL_DUCT_IMPERIAL_M = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 42, 48].map((i) => +(i * 0.0254).toFixed(6));
+export const NOMINAL_DUCT_METRIC_M = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1.0, 1.2];
+
+/** Nearest nominal on the ladder (same unit, metres). Returns null for a non-finite raw or an empty ladder. */
+export function snapToNominal(raw, ladder = NOMINAL_DUCT_IMPERIAL_M) {
+  if (!Number.isFinite(raw) || !ladder || !ladder.length) return null;
+  let best = ladder[0], bd = Infinity;
+  for (const n of ladder) { const d = Math.abs(n - raw); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+
+/**
+ * Perpendicular offsets of a run's flank lines along the width axis — the input `measureFlankWidth` needs.
+ * Projects each flank segment's MIDPOINT onto the (unit) width axis, so the outermost projections are the
+ * true exterior flanks regardless of how many wall lines the drawing carries.
+ * @param {{a:number[], b:number[]}[]} segments  flank line segments (e.g. inv4 geometry[] LWPOLYLINE pairs).
+ * @param {number[]} widthAxis  direction of the width (need not be unit; normalised here).
+ * @returns {number[]} one signed offset per segment.
+ */
+export function perpOffsetsFromFlanks(segments, widthAxis) {
+  const u = unit(widthAxis);
+  return (segments || []).map((s) => {
+    const mx = (s.a[0] + s.b[0]) / 2, my = (s.a[1] + s.b[1]) / 2, mz = (s.a[2] + s.b[2]) / 2;
+    return mx * u[0] + my * u[1] + mz * u[2];
+  });
+}
+
+/**
+ * Measure a duct width from its flank offsets and snap to nominal. Picks the EXTERIOR pair (outermost
+ * offsets) — the P4 fix — and emits the full provenance envelope so the raw measurement is never lost.
+ * @param {number[]} perpOffsets  perpendicular positions of the flank lines (from perpOffsetsFromFlanks).
+ * @param {{ladder?:number[], system?:'imperial'|'metric'}} [opts]
+ * @returns {{v:number|null, prov:'measured'|'absent-in-source', raw:number|null, snap:number|null, deltaMm:number|null}}
+ */
+export function measureFlankWidth(perpOffsets, opts = {}) {
+  const ladder = opts.ladder ?? (opts.system === 'metric' ? NOMINAL_DUCT_METRIC_M : NOMINAL_DUCT_IMPERIAL_M);
+  const vals = (perpOffsets || []).filter(Number.isFinite);
+  if (vals.length < 2) return { v: null, prov: 'absent-in-source', raw: null, snap: null, deltaMm: null };
+  const raw = Math.max(...vals) - Math.min(...vals);   // EXTERIOR span — the outermost flank pair, never an inner one
+  const snap = snapToNominal(raw, ladder);
+  const deltaMm = snap == null ? null : +(Math.abs(raw - snap) * 1000).toFixed(3);
+  return { v: snap, prov: 'measured', raw: +raw.toFixed(6), snap, deltaMm };
+}
+
+/**
+ * Merge rule (inv4 §synthesis): the LABEL width (a WxH cota, design intent) wins when present; the FLANK
+ * measurement fills ONLY the runs the label left `absent-in-source`. Never overwrites a real label value,
+ * never fabricates when neither source has a value.
+ * @param {object|null} labelEnv  inv4's label-binding width envelope (may be absent-in-source).
+ * @param {object|null} flankEnv  this module's measureFlankWidth envelope.
+ * @returns {object} the width envelope to carry on obj.fieldProvenance.width.
+ */
+export function mergeWidthProvenance(labelEnv, flankEnv) {
+  if (labelEnv && labelEnv.prov && labelEnv.prov !== 'absent-in-source' && labelEnv.v != null) return labelEnv; // label wins
+  if (labelEnv && labelEnv.prov === 'absent-in-source' && flankEnv && flankEnv.prov === 'measured') return flankEnv; // flank fills the gap
+  return labelEnv ?? flankEnv ?? { v: null, prov: 'absent-in-source', raw: null, snap: null, deltaMm: null };
+}
