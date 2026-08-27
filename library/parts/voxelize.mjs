@@ -155,3 +155,103 @@ export function occupancyAABB(occ) {
     size: [0, 1, 2].map(a => whi[a] - wlo[a]),
   };
 }
+
+// ---- polyline (duct CENTERLINE) → voxel occupancy -----------------------------------------------------
+// The CAD-intake counterpart to voxelize(): dxf-intake emits duct runs as 1-D CENTERLINES ({positions,index}
+// line-segment pairs), not triangle surfaces. This rasterizes each centerline into the SAME occupancy grid
+// for the P4 massing blockout — before any tube geometry is built — and tags every occupied cell with its
+// section (DN) so the vectorizer / de-box can recover per-run diameter.
+//
+// Grounded in creador2's strict-probe of the naive approach (MATHQC-DELTAS §11) — three findings baked in as
+// ENFORCED rules, not assumptions:
+//   1. AXIS-ALIGNED ONLY. A diagonal centerline staircases into a SPURIOUS elbow/tee. Route-1 CAD is
+//      axis-aligned by contract, so a segment differing in >1 axis is REJECTED (throw) by default, or
+//      projected onto its dominant axis when {onDiagonal:'snap'}. Never silently staircased.
+//   2. Junction position quantizes to voxelSize/2, so a caller must pick voxelSize ≤ its junction tolerance.
+//   3. A shared junction cell can only hold ONE section. First-writer-wins is wrong for a reducing tee, so
+//      the shared cell carries the CANONICAL (MAX) section and every disagreement is surfaced in conflicts[].
+const bridge6Axis = (a, b) => { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return i; return -1; };
+const sectionRank = (s) => (s == null ? -Infinity : (typeof s === 'number' ? s : Math.max(s.width ?? 0, s.height ?? 0)));
+
+/**
+ * Rasterize axis-aligned duct centerlines into a semantic occupancy grid + per-cell section map.
+ * PURE: imports nothing. Node-testable.
+ *
+ * @param {number[]} positions  flat vertex coords [x,y,z,...].
+ * @param {number[]} indices    flat LINE segment pairs [a,b, a,b, ...] (length multiple of 2).
+ * @param {object}  [opts]
+ * @param {number}  [opts.voxelSize=0.25]  voxel edge h. Pick ≤ your junction-position tolerance (finding 2).
+ * @param {(number|{width:number,height:number})[]} [opts.sections]  one section per SEGMENT (index i pairs
+ *                                        with indices[2i],indices[2i+1]); number = round DN, object = rect.
+ * @param {number[]} [opts.origin]        grid origin; defaults to the polyline AABB min snapped to a voxel.
+ * @param {'reject'|'snap'} [opts.onDiagonal='reject']  a non-axis-aligned segment throws, or snaps to axis.
+ * @returns {{voxelSize:number, origin:number[], dims:number[], cells:Uint8Array, count:number,
+ *            sectionAt:(vx,vy,vz)=>(number|object|null), conflicts:Array<{cell:number[],kept:*,dropped:*}>,
+ *            has:(vx,vy,vz)=>boolean}}
+ */
+export function voxelizePolyline(positions, indices, opts = {}) {
+  const h = opts.voxelSize ?? 0.25;
+  if (!(h > 0)) throw new RangeError('voxelizePolyline: voxelSize must be > 0');
+  if (!indices || indices.length < 2 || indices.length % 2 !== 0)
+    throw new RangeError('voxelizePolyline: indices must be non-empty LINE segment pairs (length % 2 === 0)');
+  const onDiagonal = opts.onDiagonal ?? 'reject';
+  const sections = opts.sections ?? [];
+
+  const b = boundsOf(positions);
+  const origin = opts.origin ?? b.lo.map(c => Math.floor(c / h) * h);
+  const dims = [0, 1, 2].map(a => Math.max(1, cellOf(b.hi[a] - EPS, origin[a], h) - cellOf(b.lo[a] + EPS, origin[a], h) + 1));
+  const [nx, ny, nz] = dims;
+  const cells = new Uint8Array(nx * ny * nz);
+  const idx = (x, y, z) => (x * ny + y) * nz + z;
+  const inBounds = (x, y, z) => x >= 0 && x < nx && y >= 0 && y < ny && z >= 0 && z < nz;
+  const clampCell = (p) => [0, 1, 2].map(a => Math.min(dims[a] - 1, Math.max(0, cellOf(p[a], origin[a], h))));
+  const secByCell = new Map();
+  const conflicts = [];
+  const P = (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
+
+  const markCell = (cx, cy, cz, sec) => {
+    if (!inBounds(cx, cy, cz)) return;
+    const k = idx(cx, cy, cz);
+    cells[k] = OCCUPIED;
+    if (sec === undefined) return;
+    const prev = secByCell.get(k);
+    if (prev === undefined) { secByCell.set(k, sec); return; }
+    // finding 3: shared cell keeps the CANONICAL (max) section; record the disagreement.
+    if (sectionRank(sec) !== sectionRank(prev)) {
+      const keep = sectionRank(sec) > sectionRank(prev) ? sec : prev;
+      const drop = keep === sec ? prev : sec;
+      secByCell.set(k, keep);
+      conflicts.push({ cell: [cx, cy, cz], kept: keep, dropped: drop });
+    }
+  };
+
+  const nSeg = indices.length / 2;
+  for (let s = 0; s < nSeg; s++) {
+    let ca = clampCell(P(indices[2 * s])), cb = clampCell(P(indices[2 * s + 1]));
+    const sec = sections[s];
+    const diffAxes = [0, 1, 2].filter(a => ca[a] !== cb[a]);
+    if (diffAxes.length > 1) {
+      // finding 1: not axis-aligned.
+      if (onDiagonal === 'reject')
+        throw new RangeError(`voxelizePolyline: segment ${s} is not axis-aligned (differs in axes [${diffAxes}]). ` +
+          `Route-1 CAD is axis-aligned by contract; split/snap upstream or pass {onDiagonal:'snap'}.`);
+      // snap: project the endpoint onto the dominant axis (longest cell delta), collapsing the others.
+      const dom = diffAxes.reduce((m, a) => Math.abs(cb[a] - ca[a]) > Math.abs(cb[m] - ca[m]) ? a : m, diffAxes[0]);
+      cb = ca.map((v, a) => a === dom ? cb[a] : v);
+    }
+    // bridge6: a single axis differs (or none) → a straight run of cells, no staircase, no spurious elbow.
+    const ax = bridge6Axis(ca, cb);
+    if (ax === -1) { markCell(ca[0], ca[1], ca[2], sec); continue; }
+    const step = cb[ax] > ca[ax] ? 1 : -1;
+    for (let v = ca[ax]; v !== cb[ax] + step; v += step) {
+      const c = [...ca]; c[ax] = v; markCell(c[0], c[1], c[2], sec);
+    }
+  }
+
+  let count = 0; for (let i = 0; i < cells.length; i++) if (cells[i] === OCCUPIED) count++;
+  return {
+    voxelSize: h, origin, dims, cells, count, conflicts,
+    has: (vx, vy, vz) => inBounds(vx, vy, vz) && cells[idx(vx, vy, vz)] === OCCUPIED,
+    sectionAt: (vx, vy, vz) => inBounds(vx, vy, vz) ? (secByCell.get(idx(vx, vy, vz)) ?? null) : null,
+  };
+}
