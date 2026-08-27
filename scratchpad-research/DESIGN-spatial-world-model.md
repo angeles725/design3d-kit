@@ -153,13 +153,15 @@ Concrete details the first-pass skeleton missed; each refines a section above.
   This is what the AI reads to fix the spec — and (bonus) it is exactly the shape our verify.mjs violations
   already emit, so the verifier IS a reference implementation of the oracle's report.
 
-- **9f. Multi-agent spatial reservations/locks (refines §4).** `ReserveSpace(bbox)` + a spatial lock so two
-  agents can't claim the same zone: Agent A → reserved, Agent B → denied. Directly relevant since design3d may
-  run parallel discipline agents (Architect / HVAC / Piping / Electrical / Structural) — the same pattern the
-  four of us are using to avoid collisions. Reservation is a first-class occupancy code (9b: `3 reserved`).
+- **9f. Multi-agent spatial reservations/locks (refines §4; doc §7818 lock, §7846 discipline split).**
+  `ReserveSpace(bbox)` + a spatial lock so two agents can't claim the same zone: Agent A → reserved,
+  Agent B → denied. Directly relevant since design3d may run parallel discipline agents (Architect / HVAC /
+  Piping / Electrical / Structural) — the same pattern the four of us are using to avoid collisions.
+  Reservation is a first-class occupancy code (9b: `3 reserved`). inv2's E4 exercise (ReserveEngine +
+  contend.mjs) is the empirical test of this, reusing verify.mjs for the final zero-overlap check.
 
-- **9g. Spatial-Intelligence rubric category (feeds S5 / i1's GATES merge).** Proposed sub-weights for a new
-  "Spatial Intelligence" gate category: Collisions 25% · Clearances 20% · Coordinates/frames 15% ·
+- **9g. Spatial-Intelligence rubric category (feeds S5 / i1's GATES merge; doc §7908).** Proposed sub-weights
+  for a new "Spatial Intelligence" gate category: Collisions 25% · Clearances 20% · Coordinates/frames 15% ·
   Connectivity 15% · Orientations 10% · Routing 10% · Duplicates/overlap 5%. HARD rule: any CRITICAL
   collision caps the whole asset's score at 7.9 regardless of visual/material/lighting scores (a pipe through
   an AHU cannot score ≥8). Hand this to i1 to merge with the 3-review/HARD-FAILS GATES delta.
