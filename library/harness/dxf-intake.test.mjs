@@ -189,8 +189,72 @@ test('INSERT+ATTRIB → one equipment object (id from ATTRIB, type from block, c
   assert.equal(o.type, 'chiller');                // from block CHILLER
   assert.deepEqual(o.center, [3, 2, 0]);
   assert.equal(o.source.block, 'CHILLER');
-  assert.equal(o.source.sizeSource, 'placeholder');
+  assert.equal(o.source.sizeSource, 'catalog');          // no SIZE attrib → Route-1 catalog default
+  assert.deepEqual(o.size, [3.0, 1.2, 1.8]);             // chiller catalog footprint, not a 1×1×1 placeholder
   assert.equal(o.attributes.TAG, 'CH-01');
+});
+
+const insertDxf = (block, attribs = '') => `0
+SECTION
+2
+ENTITIES
+0
+INSERT
+8
+EQUIP
+66
+1
+2
+${block}
+10
+1.0
+20
+1.0
+30
+0.0
+${attribs}0
+SEQEND
+8
+EQUIP
+0
+ENDSEC
+0
+EOF`;
+
+test('block name → canonical type + catalog size (CH_400TR → chiller [3,1.2,1.8])', () => {
+  const o = readDxf(insertDxf('CH_400TR')).objects[0];
+  assert.equal(o.type, 'chiller');
+  assert.deepEqual(o.size, [3.0, 1.2, 1.8]);
+  assert.equal(o.source.sizeSource, 'catalog');
+});
+
+test('ATTRIB SIZE → object size (Route-1 source overrides the catalog default)', () => {
+  const attribs = `0
+ATTRIB
+8
+EQUIP
+1
+2.5x1.5x2.0
+2
+SIZE
+10
+1.0
+20
+1.0
+30
+0.0
+`;
+  const o = readDxf(insertDxf('AHU_5000', attribs)).objects[0];
+  assert.deepEqual(o.size, [2.5, 1.5, 2.0]);
+  assert.equal(o.source.sizeSource, 'attrib');
+  assert.equal(o.type, 'ahu');
+});
+
+test('bulgeToArc guards bulge=0 (straight segment, no NaN / divide-by-zero)', () => {
+  const a = bulgeToArc([0, 0, 0], [2, 0, 0], 0);
+  assert.equal(a.straight, true);
+  assert.deepEqual(a.points, [[0, 0, 0], [2, 0, 0]]);
+  assert.ok(a.points.every(p => p.every(Number.isFinite)), 'no NaN');
 });
 
 test('provenance + object plugs into the shared scene_graph shape', () => {
