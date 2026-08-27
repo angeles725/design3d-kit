@@ -8,6 +8,7 @@
 // deps: spatial-harness (scene_graph carrier + validation), pass-parity (the transform gate, GATES §440).
 import { SpatialHarness } from './spatial-harness.mjs';
 import { checkPassParity } from './pass-parity.mjs';
+import { checkDeBoxWinding } from './debox-winding.mjs';
 
 /**
  * Run the CAD/foto/spec → voxel → realista spine. Each downstream module is injected; without it the
@@ -49,10 +50,22 @@ export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, 
   const realista = deBox(voxels, blockout);
   report.stages.debox = { done: true, objects: realista?.objects?.length ?? null };
 
-  // GATE — the realista pass MUST preserve the blockout's engineering data (GATES §440 / pass-parity).
+  // GATE 1 — DATA: the realista pass MUST preserve the blockout's engineering data (GATES §440 / pass-parity).
   const parity = checkPassParity(blockout, realista, gateOpts);
   report.gate = parity;
   report.stages.realista_gate = { ok: parity.ok, drifts: parity.drifts.length, missing: parity.missing.length, extra: parity.extra.length };
-  report.ok = parity.ok;
+  // GATE 2 — GEOMETRY: if the de-box emitted BUILT geometry (parts carrying positions/index), NO realista
+  // mesh may be inside-out (inv3 checkDeBoxWinding via signedVolume — the superquadric-flip class). A
+  // data-only de-box (no geometry) → SKIPPED, not failed.
+  const wparts = (realista?.windingParts ?? realista?.parts)?.filter?.(p => p?.positions) ?? null;
+  if (wparts && wparts.length) {
+    const w = checkDeBoxWinding(wparts, gateOpts.winding ?? {});
+    report.windingGate = w;
+    report.stages.winding_gate = { ok: w.ok, insideOut: w.insideOut.length, open: w.open.length, checked: w.checked };
+    report.ok = parity.ok && w.ok;
+  } else {
+    report.windingGate = { skipped: true, reason: 'no built geometry (data-only de-box)' };
+    report.ok = parity.ok;
+  }
   return report;
 }
