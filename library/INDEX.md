@@ -161,3 +161,9 @@ closes) · `superseded-by: <name>`.
 | name | kind | what | source · gate evidence | status |
 |---|---|---|---|---|
 | duct-network.json | fixture | Canonical blockout/scene reference (ductNetworkToScene shape) the whole CAD/spec→voxel→realista axis diffs against — equipment nodes (chiller/pump/AHU) with size+rotation+ports and duct fittings (elbow/tee/reducer) with ports+portDN. One source so drift anywhere in the chain shows against it. Consumed by spec→voxel, de-box, and pass-parity tests. | `library/harness/__fixtures__/duct-network.json` | ready |
+
+## v1.19 — voxel→realista de-box transform
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| debox | module (parts) | The "→realista" executable transform (recipes/de-boxing-playbook.md as code). `deBoxPlan(blockout {voxelSize, parts:[{id,type,center,size,axis?,section?,ports?}]})` maps each part.type→builder (revolution→lathe-body, rounded-housing→superquadric, duct→rect-duct, fitting→hvac-fittings, flange→torus, cabinet/chiller/ahu→rounded-box, organic-shell→marching-cubes NEVER pipes) with params derived from the bbox, PRESERVING center/size/ports/rotation/clearance EXACTLY (spread) and adding ONLY builder+params — DISCIPLINED BY CONSTRUCTION: checkPassParity(blockout, plan)=0 drift (§440). Bakes the playbook material trap (packed-map scalars=1, satin roughnessBase 0.45-0.55 not chrome). `deBox(blockout, material)` async three wrapper builds the meshes. Pure core zero-import + Node-testable; gated by pass-parity. | `library/parts/debox.mjs` (+ `.test.mjs`, 9 green incl. disciplined-by-construction on the V1 fixture) · de-boxing-playbook + V1 verdict | ready |
