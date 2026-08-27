@@ -59,3 +59,32 @@ test('semantic codes are distinct and countable', () => {
   assert.ok(s.STRUCTURE > 0 && s.HVAC > 0 && s.FREE > 0);
   assert.notEqual(CELL.STRUCTURE, CELL.HVAC);
 });
+
+test('clearObject resets an object body to FREE (only cells still holding its code)', () => {
+  const g = new OccupancyGrid([6, 6, 2], 0.5);
+  const o = { size: [2, 2, 1], center: [3, 3, 0.5] };
+  g.markObject(o);
+  assert.ok(!g.areCellsFree(box(o)));
+  g.clearObject(o);
+  assert.ok(g.areCellsFree(box(o)));           // body freed
+  assert.equal(g.cellAt([3, 3, 0.5]), CELL.FREE);
+});
+
+test('clearObject does NOT wipe a neighbour cell of a different code inside the AABB', () => {
+  const g = new OccupancyGrid([6, 6, 2], 0.5);
+  const o = { size: [2, 2, 1], center: [3, 3, 0.5] }; // AABB x[2,4] y[2,4]
+  g.markObject(o);
+  g.mark(box({ size: [0.5, 0.5, 1], center: [3, 3, 0.5] }), CELL.RESERVED); // a RESERVED patch inside
+  g.clearObject(o); // only clears OCCUPIED cells
+  assert.equal(g.cellAt([3, 3, 0.5]), CELL.RESERVED); // the RESERVED patch survives
+});
+
+test('moveObject clears the old footprint and marks the new one', () => {
+  const g = new OccupancyGrid([10, 4, 2], 0.5);
+  const oldO = { size: [2, 2, 1], center: [2, 2, 0.5] };
+  const newO = { size: [2, 2, 1], center: [7, 2, 0.5] };
+  g.markObject(oldO);
+  g.moveObject(oldO, newO);
+  assert.ok(g.areCellsFree(box(oldO)));         // old spot freed
+  assert.equal(g.cellAt([7, 2, 0.5]), CELL.OCCUPIED); // new spot occupied
+});
