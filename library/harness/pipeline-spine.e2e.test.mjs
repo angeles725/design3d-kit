@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { runSpine } from './pipeline-spine.mjs';
 import { voxelize } from '../parts/voxelize.mjs';
 import { deBoxPlan } from '../parts/debox.mjs';
+import { superquadricGrid } from '../parts/superquadric.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/duct-network.json', import.meta.url)));
 
@@ -57,6 +58,41 @@ t('e2e: a de-box that ROTATES a part → §440 gate FAILS (rotation now covered 
   const r = runSpine({ scene: scene(), voxelize: voxelizeSlot, deBox: rotSlot });
   assert.equal(r.ok, false);
   assert.ok(r.gate.drifts.some(d => d.field === 'rotation'), 'rotation drift caught');
+});
+
+
+// --- GATE 2 (winding) wiring: the de-box emits BUILT geometry, the spine runs checkDeBoxWinding ---
+const SQ = superquadricGrid({ a:1, b:1, c:1, e1:1, e2:1, uSeg:12, vSeg:8 }); // known OUTWARD (post-#42 fix)
+const reversed = (ix) => { const o = []; for (let i=0;i<ix.length;i+=3) o.push(ix[i], ix[i+2], ix[i+1]); return o; };
+
+t('e2e winding gate: de-box emitting OUTWARD geometry passes BOTH gates', () => {
+  const deBoxGeom = (voxels, bo) => ({
+    objects: deBoxPlan({ parts: bo.objects }).parts,
+    parts: bo.objects.map(o => ({ id:o.id, positions: SQ.positions, index: SQ.indices })),
+  });
+  const r = runSpine({ scene: scene(), voxelize: voxelizeSlot, deBox: deBoxGeom });
+  assert.equal(r.gate.ok, true);                 // data gate (pass-parity)
+  assert.equal(r.windingGate.ok, true);          // geometry gate (winding)
+  assert.ok(r.stages.winding_gate.checked >= 6);
+  assert.equal(r.ok, true);
+});
+
+t('e2e winding gate: an INSIDE-OUT de-box part fails gate 2 (spine not ok)', () => {
+  const deBoxFlipped = (voxels, bo) => ({
+    objects: deBoxPlan({ parts: bo.objects }).parts,
+    parts: bo.objects.map((o, i) => ({ id:o.id, positions: SQ.positions, index: i===0 ? reversed(SQ.indices) : SQ.indices })),
+  });
+  const r = runSpine({ scene: scene(), voxelize: voxelizeSlot, deBox: deBoxFlipped });
+  assert.equal(r.gate.ok, true);                 // data still preserved
+  assert.equal(r.windingGate.ok, false);         // but geometry inside-out
+  assert.ok(r.windingGate.insideOut.length >= 1);
+  assert.equal(r.ok, false);                     // spine fails on EITHER gate
+});
+
+t('e2e: data-only de-box → winding gate SKIPPED (backward-compatible)', () => {
+  const r = runSpine({ scene: scene(), voxelize: voxelizeSlot, deBox: deBoxSlot });
+  assert.equal(r.windingGate.skipped, true);
+  assert.equal(r.ok, true);
 });
 
 console.log(`\n${pass}/${pass} pipeline-spine e2e tests green`);
