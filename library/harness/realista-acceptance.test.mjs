@@ -136,3 +136,34 @@ test('ACCEPT_THRESHOLD is 8.0 and cap is 7.9 (GATES.md §370)', () => {
   assert.equal(ACCEPT_THRESHOLD, 8.0);
   assert.equal(HARD_FAIL_CAP, 7.9);
 });
+
+// ---- P6 open-edge/cap findings fold into the geometry sub-score under InvalidGeometry ----
+test('openEdge: an uncapped see-through shell caps under InvalidGeometry (GATES.md fold)', () => {
+  const v = acceptRealista({ ...CLEAN,
+    openEdge: { ok: false, findings: [{ id: 'duct-3', kind: 'uncapped', hard: true, reason: '2 uncapped ends', suggestion: 'cap them' }] } });
+  assert.ok(v.hardFails.includes('InvalidGeometry'));
+  assert.equal(v.capped, true);
+  assert.ok(v.score <= HARD_FAIL_CAP);
+  assert.ok(v.failed.some((f) => f.rule === 'InvalidGeometry' && /uncapped shell/.test(f.reason) && f.object === 'duct-3'));
+});
+
+test('openEdge: only an over-capped (soft) finding → advisory, NOT capped', () => {
+  const v = acceptRealista({ ...CLEAN,
+    openEdge: { ok: true, findings: [{ id: 'd', kind: 'over-capped', hard: false, reason: 'end capped where connection expected', suggestion: 'check topology' }] } });
+  assert.equal(v.capped, false);
+  assert.deepEqual(v.hardFails, []);
+  assert.ok(v.failed.some((f) => f.rule === 'OpenEdgeAdvisory' && !f.hard));
+});
+
+test('openEdge: a data-only de-box with ONLY open-edge input still scores geometry (not null)', () => {
+  const v = acceptRealista({ parity: { ok: true, missing: [], extra: [], drifts: [] },
+    openEdge: { ok: false, findings: [{ id: 'x', kind: 'torn', hard: true, reason: 'torn', suggestion: 'weld' }] } });
+  assert.notEqual(v.subscores.geometry, null);
+  assert.ok(v.hardFails.includes('InvalidGeometry'));
+});
+
+test('openEdge: clean (no findings) → no effect on the verdict', () => {
+  const v = acceptRealista({ ...CLEAN, openEdge: { ok: true, findings: [] } });
+  assert.equal(v.score, 10);
+  assert.equal(v.accepted, true);
+});

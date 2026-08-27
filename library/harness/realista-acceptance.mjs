@@ -15,6 +15,10 @@
 //       scene, never re-runs a gate, never invents geometry — it AGGREGATES verdicts the gates already
 //       produced. This is the aggregator Revisor's real-project retros plug into: each new failure mode
 //       becomes a hard-fail category or a weighted subscore, tuned via opts.weights / opts.floors.
+//       IT NEVER CERTIFIES: a green mechanical score is NOT a verdict (Revisor proved this live — a framing
+//       gate went mechanically green yet BLIND-failed 0.57 because the probe is blind to surrounding content).
+//       This score aggregates and CAPS; the blind review stays the SOLE visual authority. A high acceptRealista
+//       score is a necessary gate, never sufficient acceptance.
 // deps: NONE. Pure over plain gate-result objects. Deterministic (stable, no RNG, no three).
 
 // Rubric weights — DEFAULT table; GATES.md §Verdict is the documented rubric authority and inv1 reconciles
@@ -53,8 +57,8 @@ const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 // Inside-out or non-manifold-closed geometry is a modeling defect; each bad part costs, and its presence
 // raises the InvalidGeometry hard fail.
 function scoreGeometry(bundle, failed) {
-  const w = bundle.winding, integ = bundle.integrity;
-  if (!w && !integ) return null; // no built geometry -> N/A (data-only de-box)
+  const w = bundle.winding, integ = bundle.integrity, oe = bundle.openEdge;
+  if (!w && !integ && !oe) return null; // no built geometry -> N/A (data-only de-box)
   let checked = 0, bad = 0;
   if (w) {
     checked += w.checked ?? ((w.insideOut?.length ?? 0) + (w.open?.length ?? 0));
@@ -79,6 +83,22 @@ function scoreGeometry(bundle, failed) {
           reason: `${p.nonManifoldEdges} non-manifold edge(s) on a closed mesh`,
           suggestion: 'weld duplicate vertices / remove the >2-valence edges' });
       }
+    }
+  }
+  // OPEN-EDGE / CAP-AWARENESS (checkOpenEdgeCaps, retro P6). A see-through/uncapped or torn shell is an
+  // InvalidGeometry defect (GATES.md §370 fold: UncappedShell sits in the InvalidGeometry hard-fail family) —
+  // NOT a winding defect, so it is invisible to signedVolume and must be gated here. `over-capped` is soft.
+  if (oe && Array.isArray(oe.findings)) {
+    for (const f of oe.findings) {
+      if (!f.hard) {
+        failed.push({ rule: 'OpenEdgeAdvisory', object: f.id, category: 'geometry', hard: false,
+          reason: f.reason, suggestion: f.suggestion });
+        continue;
+      }
+      checked++; bad++;
+      // uncapped / torn / non-manifold shells all cap under the canonical InvalidGeometry rule.
+      failed.push({ rule: 'InvalidGeometry', object: f.id, category: 'geometry', hard: true,
+        reason: `${f.kind} shell: ${f.reason}`, suggestion: f.suggestion });
     }
   }
   if (checked === 0) return 1;
@@ -203,6 +223,7 @@ function scorePerformance(bundle, failed, opts) {
  *   parity?: {ok:boolean, missing:string[], extra:string[], drifts:object[]},        // checkPassParity
  *   winding?: {ok:boolean, insideOut:{id:string,signedVolume:number}[], open:string[], checked:number}, // checkDeBoxWinding
  *   integrity?: {id:string, closed:boolean, nonManifoldEdges:number, signedVolume:number, insideOut:boolean}[], // geom-verify meshIntegrity per part
+ *   openEdge?: {ok:boolean, findings:{id:string, kind:string, hard:boolean, reason:string, suggestion:string}[]}, // checkOpenEdgeCaps (P6 uncapped/torn shells)
  *   clashes?: {clashes:{a:string,b:string,depth:number}[], gate?:object},            // detectClashes
  *   junctions?: {label?:string, ok:boolean, gap:number}[],                            // checkJunction results
  *   coplanar?: {ok:boolean, count:number, findings:object[]},                         // checkCoplanar
