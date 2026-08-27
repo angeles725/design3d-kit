@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boundaryLoops, checkOpenEdgeCaps, expectedOpenLoopsFromDegrees } from './open-edge-cap.mjs';
+import { boundaryLoops, checkOpenEdgeCaps, expectedOpenLoopsFromDegrees, segmentTrianglesByRunId, checkFusedShellOpenEdges } from './open-edge-cap.mjs';
 
 // Closed unit cube (watertight, outward) — the same fixture debox-winding uses.
 const CUBE = [0,0,0, 1,0,0, 1,1,0, 0,1,0, 0,0,1, 1,0,1, 1,1,1, 0,1,1];
@@ -167,4 +167,78 @@ test('deterministic', () => {
   const t = openTube(9);
   assert.equal(JSON.stringify(checkOpenEdgeCaps([{ id: 'd', index: t.index, endpointDegrees: [2, 2] }])),
                JSON.stringify(checkOpenEdgeCaps([{ id: 'd', index: t.index, endpointDegrees: [2, 2] }])));
+});
+
+// ---- FUSED-MESH gate (Revisor WU-L4-B): per-vertex runId attribute, -1 accessory policy, 4 categories ----
+// Fuse several sub-meshes into one buffer, stamping every vertex of a part with that part's runId.
+function fuse(parts) {
+  const positions = [], index = [], runId = [];
+  let voff = 0;
+  for (const p of parts) {
+    const vc = p.positions.length / 3;
+    for (const x of p.positions) positions.push(x);
+    for (let k = 0; k < vc; k++) runId.push(p.runId);
+    for (const ix of p.index) index.push(ix + voff);
+    voff += vc;
+  }
+  return { positions, index, runId };
+}
+
+test('segmentTrianglesByRunId groups triangles by per-vertex runId; a cross-run triangle is mixed', () => {
+  // two 1-triangle runs sharing no vertices + one triangle whose vertices span both → mixed.
+  const positions = [0,0,0, 1,0,0, 0,1,0,  2,0,0, 3,0,0, 2,1,0];
+  const runId = [0,0,0, 1,1,1];
+  const index = [0,1,2, 3,4,5, 0,3,1]; // last spans run 0 and run 1
+  const { groups, mixed } = segmentTrianglesByRunId(index, runId);
+  assert.equal(groups.get(0).length, 3);
+  assert.equal(groups.get(1).length, 3);
+  assert.equal(mixed, 1);
+});
+
+test('fused mesh: a through-run open tube (degree [2,2]→0) → connected-open; a capped run → ok; accessory (-1) open → advisory', () => {
+  const g = fuse([
+    { ...openTube(10), runId: 0 },        // through-run, see-through
+    { positions: CUBE, index: CUBE_OUT, runId: 1 }, // watertight run
+    { ...openTube(8), runId: -1 },        // accessory loft, open (constructor bug)
+  ]);
+  const r = checkFusedShellOpenEdges(g, { degreesByRun: { 0: [2, 2], 1: [2, 2] } });
+  assert.equal(r.ok, false); // run 0 hard
+  const f0 = r.findings.find((f) => f.runId === 0);
+  assert.equal(f0.kind, 'connected-open');
+  assert.equal(f0.expected, 0);
+  assert.equal(f0.extra, 2);
+  assert.equal(f0.expectedSource, 'degree');
+  assert.ok(!r.findings.some((f) => f.runId === 1 && f.hard)); // watertight run clean
+  const acc = r.findings.find((f) => f.runId === -1);
+  assert.equal(acc.kind, 'accessory-open');
+  assert.equal(acc.hard, false);              // advisory by default
+  assert.equal(r.accessoryOpenLoops, 2);
+});
+
+test('fused mesh: TERMINAL run (degree [2,1]→expected 1) flags only the connected end', () => {
+  const g = fuse([{ ...openTube(12), runId: 7 }]); // 2 open loops
+  const r = checkFusedShellOpenEdges(g, { degreesByRun: { 7: [2, 1] } });
+  const f = r.findings.find((f) => f.runId === 7);
+  assert.equal(f.expected, 1);
+  assert.equal(f.extra, 1);
+});
+
+test('fused mesh: accessoryHard makes a -1 open loft BLOCK (opts.accessoryHard)', () => {
+  const g = fuse([{ ...openTube(6), runId: -1 }]);
+  const soft = checkFusedShellOpenEdges(g, {});
+  const hard = checkFusedShellOpenEdges(g, { accessoryHard: true });
+  assert.equal(soft.ok, true);   // advisory only
+  assert.equal(hard.ok, false);  // blocks
+});
+
+test('fused mesh: a run with no degreesByRun entry falls back to blind-default (tagged)', () => {
+  const g = fuse([{ ...openTube(8), runId: 3 }]);
+  const r = checkFusedShellOpenEdges(g, {}); // no degreesByRun
+  assert.equal(r.findings.find((f) => f.runId === 3).expectedSource, 'blind-default');
+});
+
+test('fused mesh deterministic', () => {
+  const g = fuse([{ ...openTube(9), runId: 0 }, { ...openTube(7), runId: -1 }]);
+  const f = () => checkFusedShellOpenEdges(g, { degreesByRun: { 0: [2, 2] } });
+  assert.equal(JSON.stringify(f()), JSON.stringify(f()));
 });

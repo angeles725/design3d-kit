@@ -174,3 +174,103 @@ export function checkGroupOpenEdgeCaps(group, expectedOf = null, opts = {}) {
   });
   return checkOpenEdgeCaps(parts, opts);
 }
+
+// ---- FUSED-MESH gate (Revisor WU-L4-B). ---------------------------------------------------------------
+// system-3d builds 2033 ducts as 4 FUSED meshes; run identity is a PER-VERTEX `runId` Float32 attribute
+// (NOT .name / userData — @3D measured this). Accessories push runId=-1 (2413 mitered stubs + 124
+// constructor-open lofts) and are unmappable to a run by design. This gate SEGMENTS a fused mesh by that
+// attribute and gates each run's boundary against its expected free ends, with the -1 accessory policy.
+// Run it on the ACTIVE-CLIPPED (visible) geometry so a clip plane's cuts surface as real open loops.
+
+/**
+ * Group a fused mesh's triangles by their per-vertex runId. A triangle is assigned to a run only when all
+ * three vertices agree; a triangle spanning two runs is a SEAM triangle (counted, not per-run gated).
+ * @param {ArrayLike<number>} index  flat triangle indices.
+ * @param {ArrayLike<number>} runId  per-vertex run id (length = vertex count); accessories carry -1.
+ * @returns {{groups:Map<number, number[]>, mixed:number}}  runId -> flat sub-index; mixed = seam-tri count.
+ */
+export function segmentTrianglesByRunId(index, runId) {
+  const groups = new Map();
+  let mixed = 0;
+  for (let i = 0; i < index.length; i += 3) {
+    const a = index[i], b = index[i + 1], c = index[i + 2];
+    const ra = runId[a];
+    if (ra === runId[b] && ra === runId[c]) {
+      let g = groups.get(ra);
+      if (!g) { g = []; groups.set(ra, g); }
+      g.push(a, b, c);
+    } else mixed++;
+  }
+  return { groups, mixed };
+}
+
+/**
+ * Fused-mesh see-through / uncapped gate (Revisor WU-L4-B). Segments a fused duct mesh by the per-vertex
+ * runId attribute and gates each run's open boundary loops against its expected FREE ends (from endpoint
+ * degree), with the -1 accessory policy. REPORTS-ONLY, deterministic. Run on ACTIVE-CLIPPED geometry so
+ * clip cuts surface as real open loops.
+ *
+ * Four categories (Revisor + @3D): (a) TERMINAL free end (degree<2) — legitimately open, NOT flagged;
+ * (b) CLIP-INDUCED + (c) LOST-NEIGHBOUR-COVERAGE — both are degree>=2 openings that must be section-capped,
+ * reported as `connected-open` (distinguishing b vs c needs the active clip plane — a later increment);
+ * (d) LOFT/accessory OPEN — runId===accessoryRunId shells with open loops (the 124 constructor-open lofts
+ * with no end caps), reported as `accessory-open` (advisory by default; opts.accessoryHard makes it block).
+ *
+ * @param {{positions?:ArrayLike<number>, index:ArrayLike<number>, runId:ArrayLike<number>}} geom
+ * @param {{degreesByRun?:Record<number,number[]>, accessoryRunId?:number, defaultExpectedOpenLoops?:number,
+ *          accessoryHard?:boolean, emit?:boolean}} [opts]
+ * @returns {{ok:boolean, runs:{runId:number, openLoops:number, expected:number, extra:number, source:string}[],
+ *            findings:object[], accessoryOpenLoops:number, mixedTriangles:number, checkedRuns:number}}
+ */
+export function checkFusedShellOpenEdges(geom, opts = {}) {
+  const { index, runId } = geom;
+  const accessoryRunId = opts.accessoryRunId ?? -1;
+  const degreesByRun = opts.degreesByRun || {};
+  const defExp = opts.defaultExpectedOpenLoops ?? 0;
+  const accessoryHard = opts.accessoryHard ?? false;
+  const emit = opts.emit ?? true;
+
+  const { groups, mixed } = segmentTrianglesByRunId(index, runId);
+  const findings = [];
+  const runs = [];
+  let accessoryOpenLoops = 0;
+
+  for (const [rid, subIndex] of groups) {
+    const b = boundaryLoops(subIndex);
+
+    if (rid === accessoryRunId) {
+      accessoryOpenLoops += b.openLoops;
+      if (b.openLoops > 0) findings.push({ runId: rid, kind: 'accessory-open', hard: accessoryHard,
+        openLoops: b.openLoops, expected: 0, extra: b.openLoops,
+        reason: `accessory geometry (runId=${accessoryRunId}) has ${b.openLoops} open loop(s) — constructor-open loft/stub, no end caps`,
+        suggestion: 'cap the accessory ends (B1: 2 quads/end); accessory geometry is not per-run coverage-gated' });
+      if (b.nonManifoldEdges > 0) findings.push({ runId: rid, kind: 'non-manifold', hard: true,
+        openLoops: b.openLoops, expected: 0, extra: 0,
+        reason: `${b.nonManifoldEdges} non-manifold edge(s) in accessory geometry`, suggestion: 'split the shared edge' });
+      continue;
+    }
+
+    const degrees = degreesByRun[rid];
+    const expected = degrees ? expectedOpenLoopsFromDegrees(degrees) : defExp;
+    const source = degrees ? 'degree' : 'blind-default';
+    const extra = Math.max(0, b.openLoops - expected);
+    runs.push({ runId: rid, openLoops: b.openLoops, expected, extra, source });
+
+    if (extra > 0) findings.push({ runId: rid, kind: 'connected-open', hard: true, expectedSource: source,
+      openLoops: b.openLoops, expected, extra,
+      reason: `run ${rid}: ${b.openLoops} open loop(s), ${expected} free end(s) expected (${source}) — ${extra} connected end(s) open/see-through, must be section-capped (clip-induced or lost-neighbour-coverage)`,
+      suggestion: 'section/stencil cap the connected open end(s); run on ACTIVE-CLIPPED geometry so clip cuts appear as loops' });
+    if (b.torn > 0) findings.push({ runId: rid, kind: 'torn', hard: true, expectedSource: source,
+      openLoops: b.openLoops, expected, extra: 0,
+      reason: `run ${rid}: ${b.torn} boundary opening(s) are not clean cycles — a tear, not a cut end`, suggestion: 'weld/close the tear' });
+    if (b.nonManifoldEdges > 0) findings.push({ runId: rid, kind: 'non-manifold', hard: true, expectedSource: source,
+      openLoops: b.openLoops, expected, extra: 0,
+      reason: `run ${rid}: ${b.nonManifoldEdges} non-manifold edge(s)`, suggestion: 'split the shared edge' });
+  }
+
+  findings.sort((a, c) => (c.hard - a.hard) || (a.runId - c.runId) || String(a.kind).localeCompare(String(c.kind)));
+  const ok = findings.every((f) => !f.hard);
+  if (emit && !ok) console.error('[open-edge-cap] fused see-through/uncapped shells (WU-L4-B): '
+    + JSON.stringify(findings.filter((f) => f.hard)));
+  return { ok, runs, findings, accessoryOpenLoops, mixedTriangles: mixed, checkedRuns: runs.length };
+}
