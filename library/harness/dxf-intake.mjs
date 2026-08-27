@@ -93,6 +93,25 @@ export function isAnnotationLayer(layer, extra) {
   return name.toLowerCase().split(/[-_ /]+/).filter(Boolean).some(t => ANNOTATION_TOKENS.has(t));
 }
 
+// MTEXT stores its string across group-code 3 chunks (each ≤250 chars) followed by the final code-1 part, and
+// wraps it in inline formatting codes. Strip the codes to plain text so a cota like "300x200" is readable.
+// (\P → newline; \px…; \fArial…; \H2.5x; \C1; \A1; … → dropped; braces are grouping; \~ nbsp; \\ → \.)
+export function stripMText(s) {
+  return String(s)
+    .replace(/\\P/g, '\n')
+    .replace(/\\p[^;]*;/g, '')
+    .replace(/\\[A-Za-z][^;\\]*;/g, '')   // formatting run with a terminating ';'
+    .replace(/\\[A-Za-z]/g, '')           // bare toggles (\L \l \O \o \k)
+    .replace(/\\~/g, ' ').replace(/\\\\/g, '\\')
+    .replace(/[{}]/g, '')
+    .trim();
+}
+// Does a label look like an engineering COTA (a size/flow/elevation)? Detection ONLY — this deliberately does
+// NOT parse WxH/Ø into named fields (that waits for the shared provenance contract). It exists so the spine can
+// FAIL-LOUD on "0 DIMENSION entities but N sized MTEXT" instead of falsely reporting "no cotas". EN+ES + Ø/DN.
+const SIZED_COTA = /\d\s*[xX×]\s*\d|[øØ⌀ϕΦ]\s*\d|\bDN\s*\d|\bCFM\b|\bl\/s\b|\bBOD\b|\bNPT\b/i;
+export const isSizedCota = (text) => SIZED_COTA.test(String(text));
+
 // world points of a block-definition entity (for the block's footprint bbox)
 function collectPoints(e) {
   const pts = [];
@@ -121,7 +140,7 @@ function bboxSize(pts) {
 
 export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
   const src = (e) => ({ layer: layerOf(e), entity: e.type, units, scale: 1 });
-  const objects = [], geometry = [], schedule = [], dimensions = [];
+  const objects = [], geometry = [], schedule = [], dimensions = [], annotations = [];
   let pendingInsert = null; // INSERT awaiting its ATTRIBs until SEQEND
 
   const { blocks, main } = extractBlocks(entities(parsePairs(text)));
@@ -202,6 +221,22 @@ export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
       case 'ACAD_TABLE':
         schedule.push({ layer: layerOf(e), cells: e.pairs.filter(p => p.code === 1 || p.code === 302).map(p => p.value.trim()), source: src(e) });
         break;
+      case 'TEXT': {
+        const text = (first(e, 1) || '').trim();
+        if (text) annotations.push({ text, kind: 'TEXT', sizedCota: isSizedCota(text),
+          position: [num(first(e, 10) ?? '0'), num(first(e, 20) ?? '0'), num(first(e, 30) ?? '0')],
+          height: num(first(e, 40) ?? '0'), rotationDeg: num(first(e, 50) ?? '0'), layer: layerOf(e), source: src(e) });
+        break;
+      }
+      case 'MTEXT': {
+        // reassemble across code-3 chunks + final code-1, then strip inline formatting to plain text.
+        const raw = e.pairs.filter(p => p.code === 3).map(p => p.value).join('') + (first(e, 1) || '');
+        const text = stripMText(raw);
+        if (text) annotations.push({ text, kind: 'MTEXT', sizedCota: isSizedCota(text),
+          position: [num(first(e, 10) ?? '0'), num(first(e, 20) ?? '0'), num(first(e, 30) ?? '0')],
+          height: num(first(e, 40) ?? '0'), rotationDeg: num(first(e, 50) ?? '0'), layer: layerOf(e), source: src(e) });
+        break;
+      }
       default: break;
     }
   }
@@ -229,7 +264,11 @@ export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
     room = { size: [mx[0] - mn[0], mx[1] - mn[1], Math.max(0, mx[2] - mn[2])], origin: mn, excludedLayers };
   }
 
-  return { room, objects, geometry, schedule, dimensions, units, provenance: { route: 1, source: 'dxf' } };
+  // cotas summary: lets the spine FAIL-LOUD when a sheet carries sized MTEXT but 0 DIMENSION entities
+  // (real COB-IM2 case) instead of falsely reporting "no cotas". Detection only — no WxH/Ø field names yet.
+  const sizedText = annotations.filter(a => a.sizedCota).length;
+  return { room, objects, geometry, schedule, dimensions, annotations, units,
+    provenance: { route: 1, source: 'dxf', cotas: { dimensionEntities: dimensions.length, sizedText } } };
 }
 
 // Expand geometry[] into explicit world POLYLINES (LWPOLYLINE bulges → sampled arcs, ARC/CIRCLE sampled,
