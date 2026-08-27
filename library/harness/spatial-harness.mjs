@@ -14,6 +14,18 @@ const grow = (b, cl = {}) => { const lo=[...b.lo], hi=[...b.hi];
   const m={'+x':[0,hi],'-x':[0,lo],'+y':[1,hi],'-y':[1,lo],'+z':[2,hi],'-z':[2,lo]};
   for (const [k,v] of Object.entries(cl)) { const e=m[k]; if(!e) continue; if(e[1]===hi) hi[e[0]]+=v; else lo[e[0]]-=v; } return {lo,hi}; };
 const dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+// cardinal label for a world direction under the default frame (x=east, y=north, z=up) — dominant axis wins,
+// z only when it dominates both planar axes. Lets a tool answer "B is NORTH of A" instead of raw XYZ.
+const cardinalOf = (v) => { const ax=Math.abs(v[0]), ay=Math.abs(v[1]), az=Math.abs(v[2]);
+  if (az > ax && az > ay) return v[2] >= 0 ? 'up' : 'down';
+  if (ax >= ay) return v[0] >= 0 ? 'east' : 'west'; return v[1] >= 0 ? 'north' : 'south'; };
+// bearing from point a→b: unit direction + frame-aware cardinal + planar azimuth (deg, CCW from +x/east) + range.
+// null for a zero-length bearing (coincident points). The AI reasons RELATIVE ("north, 3.2 m") — inv.md §5 /
+// inv3 §21 spatial-state: never eyeball absolute coordinates.
+const bearing = (a, b) => { const d=[b[0]-a[0], b[1]-a[1], b[2]-a[2]], len=Math.hypot(d[0],d[1],d[2]);
+  if (len < EPS) return null;
+  return { unit: d.map(v => Number((v/len).toFixed(4))), cardinal: cardinalOf(d),
+           azimuthDeg: Number((Math.atan2(d[1], d[0]) * 180/Math.PI).toFixed(1)), distance: Number(len.toFixed(3)) }; };
 // slab-clip: does segment p→q touch AABB box (optionally Minkowski-inflated by the caller)?
 const segHitsBox = (p, q, box) => {
   let t0 = 0, t1 = 1; const d = [q[0]-p[0], q[1]-p[1], q[2]-p[2]];
@@ -56,6 +68,9 @@ export class SpatialHarness {
   nearest(id, type) { const o = this.obj.get(id); if(!o) return null; let best=null, bd=Infinity;
     for (const [k,v] of this.obj) { if (k===id || (type && v.type!==type)) continue;
       const d = dist(o.center, v.center); if (d<bd){bd=d; best={id:k, distance:Number(d.toFixed(3))};} } return best; }
+  // relative bearing A→B (unit dir + cardinal + azimuth + range) so the AI can say "B is NORTH of A, 3.2 m"
+  // instead of comparing raw XYZ. null if either id is unknown or the centers coincide.
+  bearingTo(a, b) { const A=this.obj.get(a), B=this.obj.get(b); return (A&&B) ? bearing(A.center, B.center) : null; }
   // exact O(objects) scan by default; opt-in {grid,accel} delegates to occupancy-accel.findFreeRegion (O(cells)) for large scenes
   freeSpace(size, opts = {}) {
     const { step = 0.5, grid = null, accel = null, near = null } = opts;
@@ -95,6 +110,38 @@ export class SpatialHarness {
       const box = { lo: b.lo.map((v,i)=>v-pad[i]), hi: b.hi.map((v,i)=>v+pad[i]) };
       if (segHitsBox(start, end, box)) blocked.push(id); }
     return { free: blocked.length === 0, blockedBy: blocked };
+  }
+  // ---- RUN footprint / free-space (undimensioned plan position — read from the trace, NOT eyeballed) ----
+  // A "run" = an ordered centerline polyline [[x,y,z],…] with a cross-section width (+ optional height).
+  // When a drawing carries 0 plan DIMENSION (position read from the trace, per Revisor COB-IM2 L4), the AI
+  // must NOT guess where the run sits. It asks for the run's FOOTPRINT (planar bbox inflated by half-width +
+  // per-segment swept AABBs + length) and its FREE-space vs placed objects. inv.md §occupancy/find-free-space.
+  runFootprint(centerline, { width = 0, height = null } = {}) {
+    if (!Array.isArray(centerline) || centerline.length < 1) return null;
+    const half = width / 2, hz = height != null ? height / 2 : 0;
+    const round3 = (a) => a.map(v => Number(v.toFixed(4)));
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const p of centerline) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], p[i]); mx[i] = Math.max(mx[i], p[i]); }
+    const bbox = { lo: round3([mn[0]-half, mn[1]-half, mn[2]-hz]), hi: round3([mx[0]+half, mx[1]+half, mx[2]+hz]) };
+    const segments = [];
+    for (let i = 0; i < centerline.length - 1; i++) { const a = centerline[i], b = centerline[i+1];
+      segments.push({ a, b,
+        lo: round3([Math.min(a[0],b[0])-half, Math.min(a[1],b[1])-half, Math.min(a[2],b[2])-hz]),
+        hi: round3([Math.max(a[0],b[0])+half, Math.max(a[1],b[1])+half, Math.max(a[2],b[2])+hz]),
+        length: Number(dist(a, b).toFixed(4)) }); }
+    const length = Number(segments.reduce((s, seg) => s + seg.length, 0).toFixed(4));
+    return { bbox, segments, length, width, height };
+  }
+  // sweep the run's cross-section along its centerline and test against every placed object (reuses pathFree's
+  // Minkowski-inflated slab-clip per segment). free=true => the undimensioned plan position is collision-clear.
+  runFree(centerline, { width = 0, height = 0 } = {}) {
+    if (!Array.isArray(centerline) || centerline.length < 2) return { free: true, blockedBy: [] };
+    const size = [width, width, height]; const blocked = new Set();
+    for (let i = 0; i < centerline.length - 1; i++) {
+      const r = this.pathFree(centerline[i], centerline[i+1], { size });
+      if (!r.free) for (const id of (r.blockedBy || [])) blocked.add(id);
+    }
+    return { free: blocked.size === 0, blockedBy: [...blocked] };
   }
   // ---- CONNECT (by port IDENTITY, never coordinates — RULE 006) ----
   // resolve a port's LOCAL offset from EITHER shape: bare array [x,y,z] (inv3 vectorizer) OR
@@ -180,6 +227,8 @@ export class SpatialHarness {
     const mine = this.validateAll().violations.filter(x => x.a===id || x.b===id);
     this.lastOp = { id, center: o.center }; // propioception update
     return { success: true, id, center: o.center, nearby: n,
+             // relative sense to the nearest object so the AI orients ("north, 3.2 m") without raw-XYZ math
+             nearestBearing: n ? bearing(o.center, this.obj.get(n.id).center) : null,
              collisions: mine.filter(x => x.rule==='001').length,          // hard (illegal)
              clearanceWarnings: mine.filter(x => x.rule==='007').length,   // soft (quality)
              count: this.obj.size };

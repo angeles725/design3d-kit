@@ -233,4 +233,66 @@ t("pathFree/freeSpace delegate to an injected accel when a grid is provided (opt
   assert.equal(calls[1][0], "findFreeRegion");
 });
 
+t('bearingTo gives frame-aware cardinal + azimuth + range (relative sense, not raw XYZ)', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id: 'A', size: [1,1,1], center: [2, 2, 0.5] });
+  h.placeEquipment({ id: 'N', size: [1,1,1], center: [2, 6, 0.5] }); // +y = north
+  h.placeEquipment({ id: 'E', size: [1,1,1], center: [6, 2, 0.5] }); // +x = east
+  const bn = h.bearingTo('A', 'N');
+  assert.equal(bn.cardinal, 'north'); assert.equal(bn.azimuthDeg, 90); assert.equal(bn.distance, 4);
+  assert.deepEqual(bn.unit, [0, 1, 0]);
+  const be = h.bearingTo('A', 'E');
+  assert.equal(be.cardinal, 'east'); assert.equal(be.azimuthDeg, 0); assert.equal(be.distance, 4);
+});
+
+t('bearingTo returns null for unknown id or coincident centers', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id: 'A', size: [1,1,1], center: [2, 2, 0.5] });
+  assert.equal(h.bearingTo('A', 'ghost'), null);
+  assert.equal(h.bearingTo('A', 'A'), null); // zero-length bearing → null
+});
+
+t('snapshot carries nearestBearing when a neighbor exists, null when alone', () => {
+  const h = new SpatialHarness(room);
+  const solo = h.placeEquipment({ id: 'A', size: [1,1,1], center: [2, 2, 0.5] });
+  assert.equal(solo.nearestBearing, null); // first object has no neighbor
+  // B at y=5, its nearest is A at y=2 → A lies SOUTH of B, 3 m away
+  const r = h.placeEquipment({ id: 'B', size: [1,1,1], center: [2, 5, 0.5] });
+  assert.equal(r.nearby.id, 'A');
+  assert.equal(r.nearestBearing.cardinal, 'south'); assert.equal(r.nearestBearing.distance, 3);
+});
+
+t('runFootprint gives planar bbox (inflated by half-width) + per-segment boxes + length', () => {
+  const h = new SpatialHarness(room);
+  // L-shaped run: (1,1)→(5,1)→(5,4) at z=3, width 0.6, height 0.4
+  const cl = [[1,1,3],[5,1,3],[5,4,3]];
+  const fp = h.runFootprint(cl, { width: 0.6, height: 0.4 });
+  assert.deepEqual(fp.bbox.lo, [0.7, 0.7, 2.8]);  // 1-0.3, 1-0.3, 3-0.2
+  assert.deepEqual(fp.bbox.hi, [5.3, 4.3, 3.2]);  // 5+0.3, 4+0.3, 3+0.2
+  assert.equal(fp.segments.length, 2);
+  assert.equal(fp.segments[0].length, 4); assert.equal(fp.segments[1].length, 3);
+  assert.equal(fp.length, 7);
+});
+
+t('runFootprint returns null on empty/invalid centerline; height omitted => flat z-range', () => {
+  const h = new SpatialHarness(room);
+  assert.equal(h.runFootprint([]), null);
+  assert.equal(h.runFootprint('nope'), null);
+  const fp = h.runFootprint([[0,0,2],[3,0,2]], { width: 0.2 }); // no height
+  assert.deepEqual(fp.bbox.lo, [-0.1, -0.1, 2]); assert.deepEqual(fp.bbox.hi, [3.1, 0.1, 2]);
+});
+
+t('runFree sweeps the run vs placed objects: clear path free, obstructed path names blockers', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id: 'BOX', size: [1,1,2], center: [6,4,1] });
+  // a run passing THROUGH the box footprint is blocked by BOX
+  const hit = h.runFree([[2,4,1],[10,4,1]], { width: 0.4, height: 0.4 });
+  assert.equal(hit.free, false); assert.deepEqual(hit.blockedBy, ['BOX']);
+  // a run clear of everything is free
+  const clear = h.runFree([[2,1,1],[10,1,1]], { width: 0.4, height: 0.4 });
+  assert.equal(clear.free, true); assert.deepEqual(clear.blockedBy, []);
+  // a degenerate single-point run is trivially free
+  assert.equal(h.runFree([[2,1,1]]).free, true);
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);
