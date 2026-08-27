@@ -309,6 +309,41 @@ export function geometryToPolylines(sg, { arcSegments = 12 } = {}) {
   return lines;
 }
 
+// Classify what KIND of source a parsed scene_graph came from, so downstream design-intent checks can tell
+// "empty because the source is 2D LINE-WORK (traced over a PDF underlay — no placed fittings/heights/BIM to
+// check)" apart from "empty because the parse BROKE". Real evidence (Revisor, COB-IM2 L4): 41k–43k LWPOLYLINE
+// on PDF_*/PDF2_* layers + discipline layers HVAC-Ductos/M-HVAC-DUCT, no placed objects, no heights.
+// Pure function — does NOT touch provenance (height/width field names stay owned by the shared contract).
+export function classifyDxfSource(sg = {}) {
+  const objects = sg.objects || [], geometry = sg.geometry || [], annotations = sg.annotations || [];
+  const counts = {
+    objects: objects.length,
+    polylines: geometry.filter(g => g.kind === 'polyline').length,
+    lines: geometry.filter(g => g.kind === 'segment').length,
+    curves: geometry.filter(g => g.kind === 'arc' || g.kind === 'circle' || g.kind === 'ellipse').length,
+    annotations: annotations.length,
+    schedule: (sg.schedule || []).length,
+    geometryTotal: geometry.length,
+  };
+  const underlayLayers = [...new Set(geometry.map(g => g.layer).filter(L => /^pdf\d*[_-]/i.test(String(L))))];
+  const hasHeight = geometry.some(g => (g.points || []).some(p => Math.abs(p[2] || 0) > 1e-6))
+    || objects.some(o => o.center && Math.abs(o.center[2] || 0) > 1e-6);
+
+  // genuine failure/empty: nothing at all was parsed
+  if (counts.geometryTotal === 0 && counts.objects === 0 && counts.annotations === 0)
+    return { kind: 'empty', designIntentAvailable: false, hasHeight, counts, underlayLayers,
+      reason: 'no entities parsed — the DXF has no ENTITIES section or the parse failed. A PARSE/SOURCE failure, not a structural line-work case.' };
+
+  // placed equipment present → the object model exists, design-intent checks apply
+  if (counts.objects > 0)
+    return { kind: 'object', designIntentAvailable: true, hasHeight, counts, underlayLayers,
+      reason: `${counts.objects} placed equipment object(s) — design-intent checks (fittings, schedule DN, elevations) apply.` };
+
+  // geometry but no placed objects → 2D line-work: design-intent is STRUCTURALLY empty, not a parse failure
+  return { kind: 'line-work', designIntentAvailable: false, hasHeight, counts, underlayLayers,
+    reason: `source is 2D line-work (${counts.geometryTotal} geometry entities${underlayLayers.length ? ` on PDF-underlay layers ${underlayLayers.join(', ')}` : ''}), no placed fittings/heights/BIM objects. Design-intent checks (placed elbows, schedule DN, elevations) are STRUCTURALLY empty — NOT a parse failure.` };
+}
+
 // Flatten geometry into {positions:[[x,y,z]...], index:[[i,j]...]} line-buffers (bulges expanded) — the
 // {positions,index} feed inv3's voxelize()/inv4 voxel-blockout consume for the CAD→VOXEL step.
 export function toLineBuffers(sg, opts) {

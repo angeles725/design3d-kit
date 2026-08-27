@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota } from './dxf-intake.mjs';
+import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer, stripMText, isSizedCota, classifyDxfSource } from './dxf-intake.mjs';
 
 // creador1's realistic fixture: tiny 6x4 m HVAC room (INSERT w/ 66=1 + SEQEND, optional per-vertex bulge)
 const DXF = `0
@@ -604,4 +604,29 @@ test('provenance.cotas fail-loud signal: sized MTEXT present but 0 DIMENSION ent
   // the spine uses this to reject a false "no cotas" report:
   const c = cota.provenance.cotas;
   assert.ok(c.dimensionEntities === 0 && c.sizedText > 0, 'cotas exist as text — must NOT report "no cotas"');
+});
+
+// --- source classification (P2, Revisor: line-work over PDF underlay ≠ parse failure) -------------------
+test('classifyDxfSource: line-work over a PDF underlay → structural-empty, not a parse failure', () => {
+  const lw = `0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\nPDF2_0\n10\n0.0\n20\n0.0\n10\n5.0\n20\n0.0\n0\nENDSEC\n0\nEOF\n`;
+  const c = classifyDxfSource(readDxf(lw));
+  assert.equal(c.kind, 'line-work');
+  assert.equal(c.designIntentAvailable, false);
+  assert.deepEqual(c.underlayLayers, ['PDF2_0'], 'PDF underlay layer detected');
+  assert.equal(c.counts.objects, 0);
+  assert.ok(/STRUCTURALLY empty|NOT a parse failure/.test(c.reason), 'reason states it is structural, not broken');
+});
+
+test('classifyDxfSource: placed equipment present → object model, design-intent applies', () => {
+  const c = classifyDxfSource(sg);                 // top fixture has an INSERT+ATTRIB equipment object
+  assert.equal(c.kind, 'object');
+  assert.equal(c.designIntentAvailable, true);
+  assert.ok(c.counts.objects >= 1);
+});
+
+test('classifyDxfSource: nothing parsed → empty/parse-failure (distinct from line-work)', () => {
+  const c = classifyDxfSource(readDxf(`0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF\n`));
+  assert.equal(c.kind, 'empty');
+  assert.equal(c.designIntentAvailable, false);
+  assert.ok(/parse failed|PARSE\/SOURCE failure/.test(c.reason), 'reason flags a real failure, not a structural case');
 });
