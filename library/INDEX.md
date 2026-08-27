@@ -152,4 +152,10 @@ closes) · `superseded-by: <name>`.
 
 | name | kind | what | source · gate evidence | status |
 |---|---|---|---|---|
-| pass-parity | module (harness) | The realistic-pass ANTI-DRIFT gate (investigacion.md §612-652 "preserve exactly transforms/bboxes/ports/diameters/centerlines"). `checkPassParity(source, built, {posTol,requireDN})→{ok, missing, extra, drifts}` compares the realistic scene against the blockout/spec source (both in ductNetworkToScene shape) and flags every element that moved center, moved/lost a port, changed DN, or changed type — the silent engineering loss the visual/ΔE00 gate can't see. Companion to the de-box transform (it gates its output). REPORTS-ONLY, deterministic, zero-dep, TEST jurisdiction. | `library/harness/pass-parity.mjs` (+ `.test.mjs`, 10 green) · investigacion.md realistic-pass rule | ready |
+| pass-parity | module (harness) | The realistic-pass ANTI-DRIFT gate (investigacion.md §612-652 "preserve exactly transforms/bboxes/ports/diameters/centerlines"). `checkPassParity(source, built, {posTol,requireDN})→{ok, missing, extra, drifts}` compares the realistic scene against the blockout/spec source (both in ductNetworkToScene shape) and flags every element that moved center, changed SIZE (clearance-invalidating) or ROTATION (ports face wrong way), moved/lost a port, changed DN, or changed type — == GATES §440 (center/rotation/size/ports/DN) — the silent engineering loss the visual/ΔE00 gate can't see. Companion to the de-box transform (it gates its output). REPORTS-ONLY, deterministic, zero-dep, TEST jurisdiction. | `library/harness/pass-parity.mjs` (+ `.test.mjs`, 16 green) · investigacion.md realistic-pass rule | ready |
+
+## v1.19 — shared axis fixture
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| duct-network.json | fixture | Canonical blockout/scene reference (ductNetworkToScene shape) the whole CAD/spec→voxel→realista axis diffs against — equipment nodes (chiller/pump/AHU) with size+rotation+ports and duct fittings (elbow/tee/reducer) with ports+portDN. One source so drift anywhere in the chain shows against it. Consumed by spec→voxel, de-box, and pass-parity tests. | `library/harness/__fixtures__/duct-network.json` | ready |

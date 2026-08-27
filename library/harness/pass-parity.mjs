@@ -19,13 +19,15 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
  * @param {{objects:{id:string,type:string,center:number[],ports:Record<string,number[]>,portDN:Record<string,number|string>}[]}} source
  *        the authoritative blockout / spec scene (e.g. ductNetworkToScene of the certified runs).
  * @param {typeof source} built  the realistic pass re-derived into the same scene shape.
- * @param {{posTol?:number, requireDN?:boolean}} [opts]  posTol metres (default 1e-3), requireDN (default true).
+ * @param {{posTol?:number, rotTol?:number, requireDN?:boolean}} [opts]  posTol metres (default 1e-3),
+ *        rotTol radians for the rotation check (default 1e-4), requireDN (default true).
  * @returns {{ok:boolean, missing:string[], extra:string[],
- *            drifts:{id:string, field:'type'|'center'|'port'|'portMissing'|'dn', port?:string,
+ *            drifts:{id:string, field:'type'|'center'|'size'|'rotation'|'port'|'portMissing'|'dn', port?:string,
  *                    expected:any, actual:any, delta?:number}[]}}
  */
 export function checkPassParity(source, built, opts = {}) {
   const posTol = opts.posTol ?? 1e-3;
+  const rotTol = opts.rotTol ?? 1e-4;
   const requireDN = opts.requireDN ?? true;
   const S = new Map((source.objects || []).map((o) => [o.id, o]));
   const B = new Map((built.objects || []).map((o) => [o.id, o]));
@@ -41,6 +43,17 @@ export function checkPassParity(source, built, opts = {}) {
     if (s.center && b.center) {
       const d = dist(s.center, b.center);
       if (d > posTol) drifts.push({ id, field: 'center', expected: s.center, actual: b.center, delta: d });
+    }
+    // GATES §440: a realista proxy that is slightly LARGER than its blockout bbox drifts SIZE (→
+    // invalidates clearance); one re-oriented drifts ROTATION (→ its ports face the wrong way). Both
+    // are silent-drift vectors the visual gate can't see, so §440 diffs center/rotation/size/ports.
+    if (s.size && b.size) {
+      const d = dist(s.size, b.size);
+      if (d > posTol) drifts.push({ id, field: 'size', expected: s.size, actual: b.size, delta: d });
+    }
+    if (s.rotation && b.rotation) {
+      const rd = Math.max(...s.rotation.map((v, i) => Math.abs(v - (b.rotation[i] ?? 0))));
+      if (rd > rotTol) drifts.push({ id, field: 'rotation', expected: s.rotation, actual: b.rotation, delta: rd });
     }
     const sp = s.ports || {}, bp = b.ports || {};
     const sdn = s.portDN || {}, bdn = b.portDN || {};

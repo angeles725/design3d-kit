@@ -1,0 +1,22 @@
+{
+  "_doc": "Shared canonical blockout/scene fixture (ductNetworkToScene shape) — the single reference the spec→voxel, de-box, and pass-parity tests all diff against, so drift anywhere in CAD/spec→voxel→realista shows against one source. Equipment nodes carry size+rotation (GATES §440); duct fittings carry ports+portDN.",
+  "objects": [
+    { "id": "CH-01", "type": "chiller", "center": [3.5, 8.0, 0.9], "size": [3.0, 1.2, 1.8], "rotation": [0, 0, 0],
+      "ports": { "CHWS_out": [1.5, -0.6, 0.5], "CHWR_in": [1.5, 0.6, 0.5] }, "portDN": { "CHWS_out": 0.2, "CHWR_in": 0.2 } },
+    { "id": "P-01", "type": "pump", "center": [3.5, 5.5, 0.45], "size": [0.8, 0.6, 0.9], "rotation": [0, 0, 0],
+      "ports": { "suction": [-0.4, 0, 0.1], "discharge": [0.4, 0, 0.1] }, "portDN": { "suction": 0.2, "discharge": 0.15 } },
+    { "id": "AHU-01", "type": "ahu", "center": [11.5, 5.0, 1.0], "size": [2.5, 1.5, 2.0], "rotation": [0, 0, 0],
+      "ports": { "CHW_in": [-1.25, 0.4, 0.5], "CHW_out": [-1.25, -0.4, 0.5] }, "portDN": { "CHW_in": 0.2, "CHW_out": 0.2 } },
+    { "id": "ELB-0001", "type": "elbow", "center": [3.5, 6.7, 0.5], "size": [0.3, 0.3, 0.3], "rotation": [0, 0, 0],
+      "ports": { "A": [0, -0.15, 0], "B": [0, 0, 0.15] }, "portDN": { "A": 0.2, "B": 0.2 } },
+    { "id": "TEE-0001", "type": "tee", "center": [7.5, 5.5, 0.45], "size": [0.3, 0.3, 0.3], "rotation": [0, 0, 0],
+      "ports": { "A": [-0.15, 0, 0], "B": [0.15, 0, 0], "C": [0, 0.15, 0] }, "portDN": { "A": 0.15, "B": 0.15, "C": 0.15 } },
+    { "id": "RED-0001", "type": "reducer", "center": [5.0, 5.5, 0.45], "size": [0.3, 0.2, 0.2], "rotation": [0, 0, 0],
+      "ports": { "A": [-0.15, 0, 0], "B": [0.15, 0, 0] }, "portDN": { "A": 0.2, "B": 0.15 } }
+  ],
+  "connections": [
+    { "run": "r-ch-elb", "a": "CH-01.CHWS_out", "b": "ELB-0001.A" },
+    { "run": "r-pump-tee", "a": "P-01.discharge", "b": "TEE-0001.A" },
+    { "run": "r-tee-ahu", "a": "TEE-0001.B", "b": "AHU-01.CHW_in" }
+  ]
+}
