@@ -23,11 +23,11 @@ test('markObject sets body cells OCCUPIED', () => {
 test('markClearance paints CLEARANCE only where FREE (never clobbers a body)', () => {
   const g = new OccupancyGrid([8, 4, 3], 0.25);
   const a = { size: [2, 1, 1], center: [2, 2, 0.5], clearance: { '+x': 1.0 } };
-  const b = { size: [1, 1, 1], center: [3.5, 2, 0.5] }; // sits inside a's +x clearance band
+  const b = { size: [0.5, 0.5, 1], center: [3.5, 2, 0.5] }; // sits INSIDE a's +x clearance band (x[3.25,3.75])
   g.markObject(a); g.markObject(b);
   g.markClearance(a);
   assert.equal(g.cellAt([3.5, 2, 0.5]), CELL.OCCUPIED); // b's body preserved, not overwritten by CLEARANCE
-  assert.equal(g.cellAt([3.2, 2, 0.5]), CELL.CLEARANCE); // free part of a's clearance is painted
+  assert.equal(g.cellAt([3.1, 2, 0.5]), CELL.CLEARANCE); // free part of a's clearance (x=3.1, outside b) is painted
   assert.equal(g.cellAt([2, 2, 0.5]), CELL.OCCUPIED);   // a's body preserved
 });
 
