@@ -52,8 +52,11 @@ export function rectDuctGeometryFromFrames(points, frames, width, height, capEnd
     for (let k = 0; k < 4; k++) {
       const kNext = (k + 1) % 4;
       const a = i * 4 + k, b = i * 4 + kNext, c = (i + 1) * 4 + k, d = (i + 1) * 4 + kNext;
-      indices.push(a, c, d);
-      indices.push(a, d, b);
+      // Wall quad wound so the face normal points OUTWARD (verified: capped straight duct signedVolume
+      // > 0). The naive (a,c,d)/(a,d,b) order winds the walls INWARD → inside-out mesh (inv3 caught it
+      // with geom-metrics.signedVolume<0 + normalConsistency=false; the winding regression below guards it).
+      indices.push(a, d, c);
+      indices.push(a, b, d);
     }
   }
   // Optional flat caps: start cap wound reversed so its face normal points along −t[0]; end cap along +t.

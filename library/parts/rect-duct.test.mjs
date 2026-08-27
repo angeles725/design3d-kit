@@ -1,6 +1,7 @@
 // Pure-Node test for parts/rect-duct.mjs — imports only the pure core (no three).
 // Run: node library/parts/rect-duct.test.mjs   (exit 0 = all green)
 import { rectDuctGeometryFromFrames } from './rect-duct.mjs';
+import { volumeMetrics } from '../harness/geom-metrics.mjs'; // dogfood the kit's own winding QC
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; } else { fail++; console.error('FAIL: ' + msg); } }
@@ -68,6 +69,17 @@ const frame = { r: RX, s: SY, t: TZ };
 // --- guards --------------------------------------------------------------------------------------
 threw(() => rectDuctGeometryFromFrames([{ x: 0, y: 0, z: 0 }], [frame], 0, 0.3), 'rejects width 0');
 threw(() => rectDuctGeometryFromFrames([{ x: 0, y: 0, z: 0 }], [frame], 0.4, -1), 'rejects negative height');
+
+// --- WINDING regression (inv3 review catch): a CLOSED duct must have OUTWARD walls (signedVolume > 0) --
+// The naive wall winding produced an inside-out mesh (signedVolume < 0) that the twist-free parity test
+// above did not catch. This asserts the enclosed volume is positive AND exactly w·h·L.
+{
+  const W = 0.4, H = 0.3, L = 2;
+  const g = rectDuctGeometryFromFrames([{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: L }], [frame, frame], W, H, true);
+  const vm = volumeMetrics(g.positions, g.indices);
+  ok(vm.signedVolume > 0, `capped duct is NOT inside-out (signedVolume > 0, got ${vm.signedVolume})`);
+  near(vm.signedVolume, W * H * L, 1e-9, 'capped duct signedVolume = w·h·L (exact enclosed volume)');
+}
 
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail > 0 ? 1 : 0);
