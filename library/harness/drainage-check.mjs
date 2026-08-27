@@ -1,4 +1,4 @@
-// drainage-check.mjs — STAGED v1.19 delta (investigador3, MATH/QC).
+// library: drainage-check  (harness/drainage-check.mjs)
 // Gate-side COMPLEMENT to the router's slope option + creador1's applyDrainageSlope build transform.
 // The drainage flow-check (2026-08-26) proved a real defect: the orthogonal router guarantees
 // monotonic descent + net grade, but NOT continuous per-run slope — the whole drop can concentrate in
