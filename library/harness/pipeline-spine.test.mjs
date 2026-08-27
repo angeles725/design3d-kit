@@ -1,6 +1,6 @@
 // characterization tests for the {CAD/foto/spec}→voxel→realista spine (dependency-free).
 import assert from 'node:assert/strict';
-import { runSpine, scanProvenance } from './pipeline-spine.mjs';
+import { runSpine, scanProvenance, crossCheckFrames } from './pipeline-spine.mjs';
 let pass = 0; const t = (n, f) => { f(); pass++; console.log('  ok -', n); };
 // a minimal in-bounds, non-overlapping run carrying provenance envelopes (PROVENANCE-CONTRACT §2)
 const provScene = (fp) => ({ room:{size:[12,8,4]}, objects:[ { id:'DUCT-1', type:'duct', size:[0.6,0.4,0.4], center:[3,3,2], fieldProvenance: fp } ] });
@@ -95,6 +95,43 @@ t('scanProvenance unit: separates divergence flags from malformed; skips non-sna
   const { flags, malformed } = scanProvenance(objs, 10);
   assert.equal(flags.length, 1); assert.equal(flags[0].id, 'A'); assert.equal(flags[0].quantity, 'width');
   assert.equal(malformed.length, 1); assert.equal(malformed[0].id, 'B');
+});
+
+t('crossCheckFrames unit: same-source offsets compared; agreement passes, >gate disagreement flagged (§6)', () => {
+  // agree within gate (5mm apart) on sheet 14C
+  const agree = crossCheckFrames([
+    { source:'14C', pipeline:'A', offset:[0.100, 0, 0] },
+    { source:'14C', pipeline:'B', offset:[0.105, 0, 0] } ], 20);
+  assert.equal(agree.ok, true); assert.equal(agree.checked, 1); assert.equal(agree.disagreements.length, 0);
+  // disagree beyond gate: Revisor's 20.1mm on 14C
+  const bad = crossCheckFrames([
+    { source:'14C', pipeline:'A', offset:[0, 0, 0] },
+    { source:'14C', pipeline:'B', offset:[0.0201, 0, 0] } ], 20);
+  assert.equal(bad.ok, false); assert.equal(bad.disagreements[0].deltaMm, 20.1);
+  // different sources are NEVER cross-compared
+  const crossSrc = crossCheckFrames([
+    { source:'14C', pipeline:'A', offset:[0,0,0] },
+    { source:'15D', pipeline:'A', offset:[9,9,9] } ], 20);
+  assert.equal(crossSrc.checked, 0); assert.equal(crossSrc.ok, true);
+});
+
+t('spine CO-REGISTER stage: agreeing frames pass; disagreeing frames fail-loud at entry (§6/P5)', () => {
+  const base = { room:{size:[12,8,4]}, objects:[{id:'A',type:'x',size:[1,1,1],center:[2,2,0.5]}] };
+  const ok = runSpine({ scene: { ...base, provenance:{ frames:[
+    { source:'14C', pipeline:'dxf', offset:[0.10,0,0] }, { source:'14C', pipeline:'cv', offset:[0.108,0,0] } ] } } });
+  assert.equal(ok.stages.coregister.checked, 1);
+  assert.equal(ok.stages.coregister.disagreements.length, 0);
+  assert.notEqual(ok.blockedAt, 'entry:coregister-disagreement'); // proceeds
+  const fail = runSpine({ scene: { ...base, provenance:{ frames:[
+    { source:'14C', pipeline:'dxf', offset:[0,0,0] }, { source:'14C', pipeline:'cv', offset:[0.025,0,0] } ] } } });
+  assert.equal(fail.blockedAt, 'entry:coregister-disagreement'); // 25mm > 20mm gate
+  assert.equal(fail.stages.coregister.disagreements[0].deltaMm, 25);
+});
+
+t('spine without frames skips the co-register stage (no false block)', () => {
+  const r = runSpine({ scene: { room:{size:[12,8,4]}, objects:[{id:'A',type:'x',size:[1,1,1],center:[2,2,0.5]}] } });
+  assert.equal(r.stages.coregister, undefined);
+  assert.notEqual(r.blockedAt, 'entry:coregister-disagreement');
 });
 
 console.log(`\n${pass}/${pass} pipeline-spine tests green`);

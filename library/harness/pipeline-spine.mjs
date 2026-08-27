@@ -33,6 +33,29 @@ export function scanProvenance(objects, gateMm) {
   return { flags, malformed };
 }
 
+// CO-REGISTRATION cross-check (PROVENANCE-CONTRACT §6, P5). Multi-sheet co-registration is a pure
+// translation from ONE authoritative frame (meta.sheets). When two pipelines each carry an offset for the
+// SAME source, they must AGREE within the audit gate — a larger gap is a co-registration DISAGREEMENT
+// (fail-loud), never a silently-picked winner (Revisor COB-IM2: 20.1mm on sheet 14C at the 20mm gate).
+// frames: [{ source, offset:[x,y,z]|number, pipeline }]. Offsets are meters (kit convention);
+// deltaMm = ||Δoffset||·1000. Pure/synchronous; reports only.
+export function crossCheckFrames(frames, gateMm = 20) {
+  const offVec = (o) => Array.isArray(o) ? [o[0]||0, o[1]||0, o[2]||0] : [Number(o)||0, 0, 0];
+  const bySource = new Map();
+  for (const f of (frames || [])) { if (!f || f.source == null) continue;
+    if (!bySource.has(f.source)) bySource.set(f.source, []); bySource.get(f.source).push(f); }
+  const disagreements = []; let checked = 0;
+  for (const [source, list] of bySource) {
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      checked++;
+      const a = offVec(list[i].offset), b = offVec(list[j].offset);
+      const deltaMm = Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]) * 1000;
+      if (deltaMm > gateMm) disagreements.push({ source, pipelineA: list[i].pipeline, pipelineB: list[j].pipeline, deltaMm: Number(deltaMm.toFixed(2)) });
+    }
+  }
+  return { ok: disagreements.length === 0, disagreements, checked };
+}
+
 /**
  * Run the CAD/foto/spec → voxel → realista spine. Each downstream module is injected; without it the
  * stage is marked PENDING (so the skeleton runs the parts that exist and shows what's still to plug in).
@@ -45,7 +68,7 @@ export function scanProvenance(objects, gateMm) {
  * @returns {{stages:object, gate:object|null, ok:boolean, blockedAt?:string, provenance?:object}}
  */
 export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, strict = true,
-                           snapDivergenceGateMm = 10, divergencePolicy = 'warn' } = {}) {
+                           snapDivergenceGateMm = 10, divergencePolicy = 'warn', coRegisterGateMm = 20 } = {}) {
   const report = { stages: {}, gate: null, ok: false, provenance: scene?.provenance ?? null };
 
   // ENTRY — accept the dxf-intake superset (or a spec scene_graph); objects[] plugs straight in.
@@ -66,6 +89,16 @@ export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, 
   report.stages.provenance = { divergenceFlags: prov.flags, malformed: prov.malformed, gateMm: snapDivergenceGateMm, policy: divergencePolicy };
   if (prov.malformed.length) { report.blockedAt = 'entry:provenance-malformed'; return report; }        // §2: v null IFF absent-in-source
   if (divergencePolicy === 'block' && prov.flags.length) { report.blockedAt = 'entry:snap-divergence'; return report; } // §3: fail-loud policy
+
+  // CO-REGISTER (contract §6, P5) — multi-sheet co-registration is pure translation from ONE authoritative
+  // frame; two pipelines' offsets for the same source must AGREE. A disagreement beyond the audit gate is a
+  // FAIL-LOUD, never a silently-picked winner. frames live on provenance.frames (or scene.frames).
+  const frames = scene?.provenance?.frames ?? scene?.frames ?? [];
+  if (frames.length) {
+    const co = crossCheckFrames(frames, coRegisterGateMm);
+    report.stages.coregister = { checked: co.checked, disagreements: co.disagreements, gateMm: coRegisterGateMm };
+    if (!co.ok) { report.blockedAt = 'entry:coregister-disagreement'; return report; }  // offsets disagree > gate
+  }
 
   // BLOCKOUT — the certified scene_graph is the carrier every downstream stage must preserve.
   const blockout = harness.toScene();
