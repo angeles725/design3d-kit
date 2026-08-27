@@ -116,11 +116,15 @@ decision is grounded in the real occupied state, not its own stale mental model.
 ## 8. Promotion gate (honest)
 - S1 (typed relations), S3 (volumes), the compiler-oracle invariant, and the coordinate-frame discipline are
   low-risk and well-evidenced → recommend ADOPT.
-- **S2 gate — SINGLE-AGENT RESULT (measured).** A1 (N=4) and A2 (N=12) are BOTH null: a single opus copes
-  without the engine (both conditions 10/10 PASS). So in the SINGLE-AGENT regime S2 is a GUARANTEE/robustness
-  mechanism, not a correctness fix — label it "optional, density/robustness-gated". A3 (routing trap) tests a
-  distinct axis (routing ≠ placement) and may still discriminate; if also null, only a STATISTICAL multi-trial
-  could promote S2 within the single-agent regime.
+- **S2 gate — SINGLE-AGENT RESULT (measured).** A1 (N=4) and A2 (N=12) are both null on HARD (10/10 both).
+  **A3 (fixed column splitting the room) is the first NON-NULL: naive 8.5 vs engine 10** — HARD still null
+  (naive manually detoured the pipe), but naive ate 3 SOFT clearances (the column landed inside CH-01's and
+  AHU-01's service-clearance volumes) while the engine, which RESERVES clearance volumes before commit, pushed
+  equipment out of the column's band and scored clean. So single-agent, S2 is (a) a guarantee/robustness
+  mechanism AND (b) a measurable CLEARANCE-AWARENESS quality improver when a fixed obstacle intrudes
+  clearances — not a "naive is broken" story (naive leaves clearance QUALITY on the table, magnitude modest,
+  both still PASS). A statistical multi-trial would quantify the single-agent HARD-failure rate further, but A3
+  already gives a concrete reproducible single-agent quality delta.
 - **S2 in the MULTI-AGENT regime = REQUIRED, not optional (observability argument, inv2).** Every null so far
   is single-agent: ONE model holds the whole scene state in-context, so it can avoid self-collision. Two
   INDEPENDENT agents placing into the same room CANNOT observe each other's in-context state — without a shared
