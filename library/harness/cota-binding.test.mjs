@@ -33,8 +33,9 @@ test('binds a WxH+BOD cota to its nearest run; fieldProvenance under the ratifie
   assert.deepEqual(runA.height, { v: 200, prov: 'measured', raw: 200 });
   assert.equal(runA.bod.prov, 'measured');
   assert.ok(Math.abs(runA.bod.v - 3.2) < 1e-9);
-  assert.equal(runA.topExtent.prov, 'inferred');             // bod + height, both measured → derived
-  assert.ok(Math.abs(runA.topExtent.v - 203.2) < 1e-9);
+  // topExtent is HELD absent even with both measured: bod(≈m) + WxH-height(mm) is a mixed-unit value; emitting
+  // it as 'inferred' would fabricate data. Becomes inferred once the unit pair is confirmed vs real snippets.
+  assert.deepEqual(runA.topExtent, { v: null, prov: 'absent-in-source' });
 });
 
 test('a run with no cota is honestly absent-in-source (not fabricated)', () => {

@@ -16,13 +16,16 @@
 //   - width/height : measured when a WxH cota binds; {v:null,prov:'absent-in-source'} for runs with no WxH
 //   - bod          : measured when a BOD cota binds. BOD is ~99% present in source, so absent is the exception,
 //                    NOT a default — we only mark it absent for a run that genuinely has no BOD label near it.
-//   - topExtent    : DERIVED = bod + height; 'inferred' only when BOTH measured, else 'absent-in-source'.
+//   - topExtent    : DERIVED = bod + height, but HELD absent-in-source until the bod/WxH unit pair is confirmed
+//                    (bod is ≈m, WxH is mm — summing them is a mixed-unit, fabricated number). Becomes
+//                    'inferred' only once the units are reconciled against real snippets.
 // Pure-Node, offline, REPORTS only.
 
 import { geometryToPolylines } from './dxf-intake.mjs';
 
 // Parse an engineering cota label into its raw quantities (null when absent). Units are as-drawn (WxH/Ø in mm
-// by convention; BOD in the drawing's elevation unit) — unit reconciliation is verified against real fixtures.
+// by convention; BOD in the drawing's elevation unit); the unit PAIR is UNVERIFIED pending Revisor's real
+// snippets, so any cross-unit math (see topExtent) is deferred rather than fabricated.
 export function parseCota(text) {
   const s = String(text);
   const wh = s.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)/);
@@ -81,11 +84,12 @@ export function bindCotasToRuns(sg = {}, { widthGate = 0.02, arcSegments = 8 } =
     const width = wh ? measured(wh.width) : absent();
     const height = wh ? measured(wh.height) : absent();
     const bod = bd ? measured(bd.bod) : absent();
-    // topExtent = bod + height (top-of-duct elevation). DERIVED/convenience; the load-bearing pair is bod+height.
-    // Unit caveat: WxH is mm, bod is the drawing's elevation unit — reconciliation verified vs real snippets.
-    const topExtent = (bod.prov === 'measured' && height.prov === 'measured')
-      ? { v: bod.v + height.v, prov: 'inferred', raw: bod.v + height.v }
-      : absent();
+    // topExtent = bod + height (top-of-duct elevation) is DERIVED convenience; bod+height are the load-bearing
+    // pair. It is HELD absent even when both are measured: bod parses in the drawing's elevation unit (≈ m) while
+    // WxH parses in mm, so summing them yields a mixed-unit, meaningless value — tagging that 'inferred' would be
+    // fabricated data. Units are UNVERIFIED pending Revisor's real snippets; once the pair is known this becomes
+    // { v: bod + reconciled(height), prov: 'inferred' }.
+    const topExtent = absent();
     return {
       geometryIndex: run.geometryIndex, layer: run.layer,
       fieldProvenance: { width, height, bod, topExtent },
