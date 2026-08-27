@@ -104,3 +104,49 @@ must be labelled REGRESSION DETECTOR in both the spec and the review. Per-node:
 `attachment` (required for appendages), `closure` (required for opposed/linked moving parts).
 Track-specific: `ui_controls`, `blockout_scale` (threejs — the voxel ratio, e.g. `"1 voxel = 0.1 m"`,
 drives the `// SCALE:` comment), `render` (blender: engine, samples).
+
+## Schema — spatial, risk & animation fields (optional supersets)
+
+Every field below is OPTIONAL and a pure SUPERSET: a spec that omits it behaves byte-identically to
+prior versions. They supply the spatial / clash / perf gates (GATES.md §Spatial, clash &
+mechanical-integrity gate) with their declared inputs.
+
+- **`scene_graph`** — the typed spatial memory for a multi-asset scene. A list of equipment NODES, each
+  `{id, center:[x,y,z], size:[sx,sy,sz], rotation` (quaternion `[x,y,z,w]` — NEVER Euler, three.js
+  gimbal-lock warning), `ports:{NAME:{DN, position:[lx,ly,lz], direction:[dx,dy,dz]}}`,
+  `connections:[[portA,portB]], constraints}`. Ports carry a DIRECTION (unit vector) as well as a
+  position; the object orientation derives from directions via `Quaternion.setFromUnitVectors`, never
+  authored Euler. This schema is VALIDATED end-to-end — the F1/F2 flow-checks authored designs against it
+  and the shared `verify.mjs` scorer accepts both the flat `[lx,ly,lz]` and the richer `{position,direction}`
+  port forms, so the spec fields and the QC scorer agree. The graph's RELATIONS are DETERMINISTIC COMPUTED
+  PREDICATES — `clearance` (unary),
+  `contact` / `alignment` (binary), `symmetry` / `equidistance` (higher-order) — NOT learned edges: the
+  kit owns exact geometry, so these are QC predicates, not model inputs. Concept + engine:
+  `references/spatial-world-model.md`.
+
+- **`upAxis: "Y" | "Z"`**, **default `"Y"`.** Declares the UP axis of the DATA / spatial layer only.
+  `"Y"` = render-native — a spec authored directly in render space needs NO conversion. `"Z"` = a
+  CAD-logical scene whose data is Z-up; it is converted to render space by the SINGLE shared
+  `cadToRender()` transform that already owns the existing CAD→3D intake plan-reflection (the COB-IM2
+  corpus mapping where three.js `z` maps to the sheet's plan `+Y`, i.e. `z = y`;
+  `disenos/COB-IM2/runs/2026-08-21-architecture-retro.md`). A Z-up spec and a CAD-sourced scene MUST
+  route through that SAME function or they disagree on up / north — never author a second mapping, and
+  convert ONCE at the render boundary. The **RENDER layer stays Y-up, 1 unit = 1 m — UNCHANGED and
+  non-negotiable** (TRACK-THREEJS, shared by every shipped design); `upAxis` touches only the data layer.
+
+- **`clearanceRisk: { pClashMax: N }`** — opt-in Monte-Carlo interference gate. Mirrors
+  `colorTarget.deltaE00Max` exactly: declared ⇒ `clash-detect.mjs`'s `monteCarlo` mode records
+  `mechanical.clash_probability` and `gate-state.mjs` enforces `p_clash ≤ pClashMax`;
+  declared-but-unrecorded ⇒ fail loud; absent ⇒ prior behaviour (P(clash) is a risk estimate over an
+  ASSUMED tolerance distribution, never an unconditional auto-fail). GATES.md §Monte-Carlo P(clash).
+
+- **Per-device-class perf budget — under `quality_contract`.** The existing `perf_budget` (draws, tris)
+  MAY additionally declare `maxDrawCalls` / `maxVisibleTriangles` per device class; `gate-state.mjs`
+  enforces them deterministically like `global_min` (declared-but-missing measurement = fail loud;
+  absent = the plain `perf_budget` path, unchanged). Best placed INSIDE `quality_contract` beside
+  `perf_budget`, not as a new top-level key. GATES.md §Auto PERF-BUDGET gate.
+
+- **`keyframes` / `sequence`** — an OPTIONAL animation-pass field carrying a SERIALIZABLE keyframe /
+  sequence description (the `@theatre/core` shape CONCEPT only — no runtime dependency, no editor, no
+  `@theatre/studio`). It records animation channels as plain data alongside the existing per-node
+  `animation` / `pivot` hierarchy (authoring rule 3); a design that omits it animates exactly as before.
