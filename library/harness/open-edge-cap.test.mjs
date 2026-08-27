@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boundaryLoops, checkOpenEdgeCaps, expectedOpenLoopsFromDegrees, segmentTrianglesByRunId, checkFusedShellOpenEdges } from './open-edge-cap.mjs';
+import { boundaryLoops, checkOpenEdgeCaps, expectedOpenLoopsFromDegrees, segmentTrianglesByRunId, checkFusedShellOpenEdges, weldByPosition, checkFusedMeshClosed } from './open-edge-cap.mjs';
 
 // Closed unit cube (watertight, outward) — the same fixture debox-winding uses.
 const CUBE = [0,0,0, 1,0,0, 1,1,0, 0,1,0, 0,0,1, 1,0,1, 1,1,1, 0,1,1];
@@ -241,4 +241,49 @@ test('fused mesh deterministic', () => {
   const g = fuse([{ ...openTube(9), runId: 0 }, { ...openTube(7), runId: -1 }]);
   const f = () => checkFusedShellOpenEdges(g, { degreesByRun: { 0: [2, 2] } });
   assert.equal(JSON.stringify(f()), JSON.stringify(f()));
+});
+
+// ---- WELD + WHOLE-MESH closedness (the correct check for the non-indexed fused solid) ----
+// Expand an indexed mesh into a NON-INDEXED triangle soup (every triangle's 3 vertices duplicated) —
+// this is the shape system-3d actually produces (makeGeo never calls setIndex).
+function soup(positions, index) {
+  const out = [];
+  for (const vi of index) out.push(positions[vi * 3], positions[vi * 3 + 1], positions[vi * 3 + 2]);
+  return out;
+}
+
+test('weldByPosition tol 0 = exact: two distinct vertices stay DISTINCT; a slack tol fuses them (the danger)', () => {
+  const positions = [0, 0, 0, 0.01, 0, 0]; // 10 mm apart
+  assert.equal(weldByPosition(positions, 0).weldedVertices, 2, 'exact keeps distinct points distinct');
+  // A slack tolerance near the half-wall ceiling (@3D: 5.08e-2 m) fuses them — closing a real hole by construction.
+  assert.equal(weldByPosition(positions, 0.05).weldedVertices, 1, 'slack fuses genuinely distinct points — @3D danger');
+});
+
+test('checkFusedMeshClosed: a NON-INDEXED closed cube soup welds (tol 0) to 8 verts and reads CLOSED', () => {
+  const cubeSoup = soup(CUBE, CUBE_OUT); // 36 verts, no index
+  const r = checkFusedMeshClosed({ positions: cubeSoup });
+  assert.equal(r.originalVertices, 36);
+  assert.equal(r.weldedVertices, 8);
+  assert.equal(r.boundaryEdges, 0);
+  assert.equal(r.closed, true); // topologically watertight — proves see-through is NOT an open shell
+});
+
+test('checkFusedMeshClosed: a NON-INDEXED open tube soup is NOT closed — welding does NOT fabricate caps', () => {
+  const t = openTube(12);
+  const r = checkFusedMeshClosed({ positions: soup(t.positions, t.index) });
+  assert.equal(r.closed, false);
+  assert.ok(r.boundaryEdges > 0); // the two real cut ends survive the weld
+});
+
+test('WELDER VALIDATION (@3D): exact-weld distinguishes "welder works" from "welder closes everything"', () => {
+  // A genuinely-open shell must STAY open at tol 0 (welder works) — a slack tol would falsely close it.
+  const t = openTube(10);
+  const exact = checkFusedMeshClosed({ positions: soup(t.positions, t.index) }, { weldTolerance: 0 });
+  assert.equal(exact.closed, false, 'exact weld preserves the real hole (does not close everything)');
+});
+
+test('checkFusedMeshClosed accepts an already-indexed mesh too (remaps through the weld)', () => {
+  const r = checkFusedMeshClosed({ positions: CUBE, index: CUBE_OUT });
+  assert.equal(r.closed, true);
+  assert.equal(r.weldedVertices, 8);
 });
