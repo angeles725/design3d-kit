@@ -14,6 +14,19 @@ Target paths named per delta. Verdicts: ADOPT / ADAPT / REFERENCE-ONLY.
 
 Key framing: these are VLM-PERCEPTION papers (image→3D understanding). Our kit is spec-first and OWNS exact geometry, so adopt the **representations and loops**, NOT the neural perception stacks (open-vocab detection, metric depth, point-cloud lifting = academic-only for us).
 
+## Verified sources (2nd-pass additions)
+| Claim | Verdict | Evidence |
+|---|---|---|
+| Open3D-VQA: models better at RELATIVE relations than ABSOLUTE distances | TRUE | arXiv 2503.11094, ACM MM'25, EmbodiedCity/Open3D-VQA. 73k-QA benchmark; also found 3D-LLMs show no significant edge over 2D-LLMs |
+| SpatialLLM: 3D-informed design beats 2D-biased LMMs | TRUE | arXiv 2505.00788, CVPR 2025 (Ma et al.); SpatialVQA benchmark, +8.7% over GPT-4o |
+| SpatialRGPT (re-confirm): LLMs can't use raw text coordinates well | TRUE (verbatim) | NeurIPS 2024: "LLMs struggle to utilize coordinate information effectively when presented in text"; fix = depth + 3D scene-graph regions |
+| "ImperativeScene" (doc name invented) = imperative sequential placement + LLM-free error correction | TRUE (real title differs) | Real: "Procedural Scene Programs … LLM-Free Error Correction via Program Search", arXiv 2510.16147, SIGGRAPH Asia 2025. Each object's pose = f(previously-placed objects) + program-space search correction |
+| three.js spatial primitives are real vendored APIs | TRUE | Box3/intersectsBox, examples/jsm/math/OBB, examples/jsm/math/Octree, getWorldPosition/localToWorld/worldToLocal/matrixWorld. NOTE three.js Octree ≠ OctoMap |
+
+Cross-lane note (NOT claimed by me): SpatialGrammar (arXiv 2604.27555, BEV-grid DSL + deterministic compiler + SG-Agent) and WorldGen (arXiv 2511.16825, CVPR 2026, text→navigable worlds) appear in my sections but belong to inv2's agentic lane; three-mesh-bvh/ObjectBVH is inv3's collision lane. Flagged, not duplicated. Research-repo licenses UNVERIFIED — only matters if VENDORED (none are; design references only — vendored deps stay three.js MIT + optional Rapier Apache-2.0).
+
+S-CITE — extra evidence backing S2 (AI must not own raw coordinates): Open3D-VQA (relative>absolute → prefer relational ops), SpatialLLM (2D-bias is the root cause → give explicit 3D structure), SpatialRGPT (raw text coords underused → high-level ops beat coordinate strings), Procedural Scene Programs (academic precedent for sequential reserve→validate→commit imperative placement + LLM-free correction = our compiler-oracle).
+
 ## DELTAS
 
 ### S1 — Typed scene-graph/hypergraph as persistent spatial memory  [ADOPT]

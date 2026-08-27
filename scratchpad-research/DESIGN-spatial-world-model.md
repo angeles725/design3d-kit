@@ -163,3 +163,17 @@ Concrete details the first-pass skeleton missed; each refines a section above.
   Connectivity 15% · Orientations 10% · Routing 10% · Duplicates/overlap 5%. HARD rule: any CRITICAL
   collision caps the whole asset's score at 7.9 regardless of visual/material/lighting scores (a pipe through
   an AHU cannot score ≥8). Hand this to i1 to merge with the 3-review/HARD-FAILS GATES delta.
+
+- **9h. Concrete vendored primitives + academic backing (implementation notes).** The engine is buildable
+  from primitives we already vendor (no new deps for the core):
+  - three.js `Box3`/`intersectsBox` (AABB broad check), `examples/jsm/math/OBB` (rotated bodies),
+    `examples/jsm/math/Octree` (spatial partition), `getWorldPosition`/`localToWorld`/`worldToLocal`/
+    `matrixWorld` (the world↔local discipline of §6). CAUTION: three.js `Octree` ≠ OctoMap — different things.
+  - Extra evidence for the "AI must not own raw coordinates" thesis (S2): Open3D-VQA (arXiv 2503.11094,
+    relative>absolute), SpatialLLM (arXiv 2505.00788, CVPR 2025, 2D-bias is the root cause), SpatialRGPT
+    (NeurIPS 2024, verbatim "LLMs struggle to utilize coordinate information … in text").
+  - Academic precedent for §4's sequential reserve→validate→commit + the compiler-oracle's LLM-free
+    correction: **Procedural Scene Programs** (arXiv 2510.16147, SIGGRAPH Asia 2025) — imperative placement
+    where each object's pose is a function of previously-placed objects, corrected by program-space search
+    (no LLM in the correction loop). This is the strongest external validation that the imperative +
+    deterministic-correction architecture is sound, not just intuitive.
