@@ -119,6 +119,17 @@ export function readDxf(text, { units = 'm' } = {}) {
           center: [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')],
           radius: num(first(e, 40)), startAngleDeg: num(first(e, 50)), endAngleDeg: num(first(e, 51)), source: src(e) });
         break;
+      case 'CIRCLE':
+        geometry.push({ kind: 'circle', layer: layerOf(e),
+          center: [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')],
+          radius: num(first(e, 40)), source: src(e) });
+        break;
+      case 'ELLIPSE':
+        geometry.push({ kind: 'ellipse', layer: layerOf(e),
+          center: [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')],
+          majorEnd: [num(first(e, 11)), num(first(e, 21)), num(first(e, 31) ?? '0')], // major-axis endpoint RELATIVE to center
+          ratio: num(first(e, 40)), startParam: num(first(e, 41) ?? '0'), endParam: num(first(e, 42) ?? String(2 * Math.PI)), source: src(e) });
+        break;
       case 'LWPOLYLINE': {
         const flags = parseInt(first(e, 70) || '0', 10);
         const verts = []; let v = null;
@@ -177,9 +188,16 @@ export function readDxf(text, { units = 'm' } = {}) {
     }
   }
 
-  // room extents from WALLS geometry (else all geometry)
-  const wall = geometry.filter(g => g.layer.toUpperCase() === 'WALLS' && g.points);
-  const pool = (wall.length ? wall : geometry).flatMap(g => g.points || (g.vertices ? g.vertices.map(v => v.point) : []) || []);
+  // room extents from WALLS geometry (else all geometry) — include circle/ellipse bbox corners
+  const ptsOf = (g) => {
+    if (g.points) return g.points;
+    if (g.vertices) return g.vertices.map(v => v.point);
+    if (g.kind === 'circle') { const [x, y, z] = g.center, r = g.radius; return [[x - r, y - r, z], [x + r, y + r, z]]; }
+    if (g.kind === 'ellipse') { const [x, y, z] = g.center, m = Math.hypot(g.majorEnd[0], g.majorEnd[1]); return [[x - m, y - m, z], [x + m, y + m, z]]; }
+    return [];
+  };
+  const wall = geometry.filter(g => g.layer.toUpperCase() === 'WALLS' && (g.points || g.kind === 'circle' || g.kind === 'ellipse'));
+  const pool = (wall.length ? wall : geometry).flatMap(ptsOf);
   let room = null;
   if (pool.length) {
     const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
@@ -209,6 +227,19 @@ export function geometryToPolylines(sg, { arcSegments = 12 } = {}) {
       }
       if (V.length) pts.push(V[V.length - 1].point);
       if (g.closed && V.length) pts.push(V[0].point);
+      lines.push(pts);
+    } else if (g.kind === 'circle') {
+      const [cx, cy, cz] = g.center, r = g.radius, n = arcSegments * 2, pts = [];
+      for (let i = 0; i <= n; i++) { const a = 2 * Math.PI * (i / n); pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a), cz]); }
+      lines.push(pts); // closed loop
+    } else if (g.kind === 'ellipse') {
+      const [cx, cy, cz] = g.center, ang = Math.atan2(g.majorEnd[1], g.majorEnd[0]);
+      const major = Math.hypot(g.majorEnd[0], g.majorEnd[1]), minor = major * g.ratio;
+      const t0 = g.startParam, t1 = g.endParam, n = arcSegments * 2, pts = [];
+      for (let i = 0; i <= n; i++) {
+        const t = t0 + (t1 - t0) * (i / n), ex = major * Math.cos(t), ey = minor * Math.sin(t);
+        pts.push([cx + ex * Math.cos(ang) - ey * Math.sin(ang), cy + ex * Math.sin(ang) + ey * Math.cos(ang), cz]);
+      }
       lines.push(pts);
     }
   }
