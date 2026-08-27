@@ -1,4 +1,4 @@
-// library: topology-ext  (harness/topology-ext.mjs) — §7 topology metrics (investigador3).
+// library: topology-ext  (harness/topology-ext.mjs) — §7 topology metrics + report (investigador3).
 // source: design3d MATHQC §7 topology pass · extends library/harness/geom-verify.mjs · PoC by creador1
 //         (2026-08-26). Wires the doc's 10%-weighted Topology rubric into objective, pure-JS metrics.
 // what: four mesh-QC checks over flat geometry arrays, each catching a defect geom-verify's existing

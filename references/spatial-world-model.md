@@ -37,8 +37,16 @@ Every placement is a TRANSACTION, not an assignment:
 ```
 PROPOSE(candidate) → check cascade → COMMIT | REJECT(reason)
   cascade: bounds ⊆ room → broad-phase (occupancy/hash) → AABB → OBB → narrow-phase (BVH/Rapier)
-                         → clearance-box free → own-clearance ⊆ room
+                         → clearance-box free → own-clearance ⊆ room → PORT ACCESS free
 ```
+
+**PORT ACCESS is part of `canPlace`, not just body + clearance** (design finding surfaced by building the
+reference engine, 2026-08-26): a layout can be body-clean AND clearance-clean yet UNROUTABLE — the engine
+jammed a pump's suction port flat against an AHU face, so no pipe could ever reach it. So `canPlace` MUST
+also require a free APPROACH STUB in front of every port along its outward normal (a short clear volume the
+connecting run needs to tie in); failing it is a distinct rejection reason `port-access-blocked`. With the
+check, the engine re-places into port-accessible slots and routes clean. Placement that ignores port access
+produces scenes that pass every static check and cannot be piped.
 
 Sequential reservation is what kills the "everything at (0,0,0)" stacking failure: object N+1 is placed
 against the COMMITTED state of 1..N, and after each commit the AI receives a fresh spatial snapshot
