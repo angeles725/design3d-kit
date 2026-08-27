@@ -1,7 +1,9 @@
 // characterization tests for the {CAD/foto/spec}→voxel→realista spine (dependency-free).
 import assert from 'node:assert/strict';
-import { runSpine } from './pipeline-spine.mjs';
+import { runSpine, scanProvenance } from './pipeline-spine.mjs';
 let pass = 0; const t = (n, f) => { f(); pass++; console.log('  ok -', n); };
+// a minimal in-bounds, non-overlapping run carrying provenance envelopes (PROVENANCE-CONTRACT §2)
+const provScene = (fp) => ({ room:{size:[12,8,4]}, objects:[ { id:'DUCT-1', type:'duct', size:[0.6,0.4,0.4], center:[3,3,2], fieldProvenance: fp } ] });
 
 const scene = { room:{size:[12,8,4]}, provenance:{route:1,source:'dxf'},
   objects:[
@@ -54,6 +56,45 @@ t("a placeholder-size object is BLOCKED at entry (strict); proceeds with strict:
   assert.deepEqual(r.stages.entry.unresolvedSize, ["CH-01"]);
   const r2 = runSpine({ scene: s, strict:false, voxelize: () => ({cells:1}), deBox: (v,bo)=>({room:bo.room, objects: bo.objects.map(o=>({...o,material:"x"}))}) });
   assert.notEqual(r2.blockedAt, "entry:unresolved-size");
+});
+
+t('provenance envelopes thread entry->blockout; healthy snap raises no divergence flag (§5.1/§3)', () => {
+  const r = runSpine({ scene: provScene({
+    width:  { v:0.1016, prov:'measured', raw:0.105, snap:'imperial-4in', deltaMm:3.4 },
+    height: { v:null,   prov:'absent-in-source' },
+    bod:    { v:3.20,   prov:'measured' } }) });
+  assert.equal(r.stages.provenance.malformed.length, 0);
+  assert.equal(r.stages.provenance.divergenceFlags.length, 0); // 3.4mm < 10mm gate = healthy
+  assert.equal(r.stages.blockout.provenanceCarried, 1);        // §5.1: envelopes survived entry->blockout
+});
+
+t('snap divergence >= gate flags (warn: reported not blocked; block: fail-loud); gate is configurable (§3)', () => {
+  const fp = { width:{ v:0.1016, prov:'measured', raw:0.0825, snap:'imperial-4in', deltaMm:19.1 } };
+  const warn = runSpine({ scene: provScene(fp) }); // default policy warn, gate 10
+  assert.equal(warn.stages.provenance.divergenceFlags.length, 1);
+  assert.equal(warn.stages.provenance.divergenceFlags[0].deltaMm, 19.1);
+  assert.notEqual(warn.blockedAt, 'entry:snap-divergence'); // warn surfaces but does not block
+  const block = runSpine({ scene: provScene(fp), divergencePolicy:'block' });
+  assert.equal(block.blockedAt, 'entry:snap-divergence');
+  const hiGate = runSpine({ scene: provScene(fp), snapDivergenceGateMm:25 }); // above the 4" half-step
+  assert.equal(hiGate.stages.provenance.divergenceFlags.length, 0);
+});
+
+t('malformed envelope violates the v-null-IFF-absent invariant -> fail-loud block (§2)', () => {
+  const bad1 = runSpine({ scene: provScene({ height:{ v:0.4, prov:'absent-in-source' } }) }); // absent must be null
+  assert.equal(bad1.blockedAt, 'entry:provenance-malformed');
+  const bad2 = runSpine({ scene: provScene({ width:{ v:null, prov:'measured' } }) });          // measured must not be null
+  assert.equal(bad2.blockedAt, 'entry:provenance-malformed');
+});
+
+t('scanProvenance unit: separates divergence flags from malformed; skips non-snap envelopes', () => {
+  const objs = [
+    { id:'A', fieldProvenance:{ width:{v:0.1,prov:'measured',raw:0.08,snap:'x',deltaMm:20}, height:{v:null,prov:'absent-in-source'}, bod:{v:3.2,prov:'measured'} } },
+    { id:'B', fieldProvenance:{ width:{v:0.2,prov:'absent-in-source'} } }, // absent yet v!=null => malformed
+  ];
+  const { flags, malformed } = scanProvenance(objs, 10);
+  assert.equal(flags.length, 1); assert.equal(flags[0].id, 'A'); assert.equal(flags[0].quantity, 'width');
+  assert.equal(malformed.length, 1); assert.equal(malformed[0].id, 'B');
 });
 
 console.log(`\n${pass}/${pass} pipeline-spine tests green`);

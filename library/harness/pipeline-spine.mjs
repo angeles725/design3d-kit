@@ -10,6 +10,29 @@ import { SpatialHarness } from './spatial-harness.mjs';
 import { checkPassParity } from './pass-parity.mjs';
 import { checkDeBoxWinding } from './debox-winding.mjs';
 
+// PROVENANCE scan (references/PROVENANCE-CONTRACT.md §2/§3). Each per-quantity envelope on an object's
+// `fieldProvenance` is {v, prov, raw?, snap?, deltaMm?}. Two spine duties here:
+//  §2 invariant — `v === null` IFF `prov === 'absent-in-source'`; a violation is malformed provenance
+//     (an INFER/MEASURED with a null value, or an absent field carrying a fabricated number) → block.
+//  §3 divergence — when a snap retained a raw, `deltaMm = |v−raw|·1000` is a SIGNAL a snap may have
+//     masked a raw measurement error (P4); flag when `deltaMm >= snapDivergenceGateMm`.
+// Pure/synchronous; reports only. Envelopes are threaded untouched (never collapsed to a bare number, §5.1).
+export function scanProvenance(objects, gateMm) {
+  const flags = [], malformed = [];
+  for (const o of (objects || [])) {
+    const fp = o?.fieldProvenance; if (!fp || typeof fp !== 'object') continue;
+    for (const [quantity, env] of Object.entries(fp)) {
+      if (!env || typeof env !== 'object') continue;
+      const absent = env.prov === 'absent-in-source';
+      const isNull = env.v === null || env.v === undefined;
+      if (absent !== isNull) malformed.push({ id: o.id, quantity, prov: env.prov, v: env.v }); // §2 invariant
+      if (typeof env.deltaMm === 'number' && env.deltaMm >= gateMm)                             // §3 divergence
+        flags.push({ id: o.id, quantity, deltaMm: env.deltaMm, v: env.v, raw: env.raw, snap: env.snap });
+    }
+  }
+  return { flags, malformed };
+}
+
 /**
  * Run the CAD/foto/spec → voxel → realista spine. Each downstream module is injected; without it the
  * stage is marked PENDING (so the skeleton runs the parts that exist and shows what's still to plug in).
@@ -21,7 +44,8 @@ import { checkDeBoxWinding } from './debox-winding.mjs';
  *   gateOpts — passed to checkPassParity (posTol, requireDN)
  * @returns {{stages:object, gate:object|null, ok:boolean, blockedAt?:string, provenance?:object}}
  */
-export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, strict = true } = {}) {
+export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, strict = true,
+                           snapDivergenceGateMm = 10, divergencePolicy = 'warn' } = {}) {
   const report = { stages: {}, gate: null, ok: false, provenance: scene?.provenance ?? null };
 
   // ENTRY — accept the dxf-intake superset (or a spec scene_graph); objects[] plugs straight in.
@@ -36,9 +60,17 @@ export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, 
   if (!v.ok) { report.blockedAt = 'entry'; return report; }              // an illegal blockout NEVER proceeds to voxelize
   if (strict && unresolvedSize.length) { report.blockedAt = 'entry:unresolved-size'; return report; } // placeholder size never voxelizes
 
+  // PROVENANCE (contract §2/§3) — surface snap-divergence + enforce the envelope invariant. Additive: the
+  // fieldProvenance envelopes thread through untouched (harness toScene passthrough), never collapsed (§5.1).
+  const prov = scanProvenance(entryScene.objects, snapDivergenceGateMm);
+  report.stages.provenance = { divergenceFlags: prov.flags, malformed: prov.malformed, gateMm: snapDivergenceGateMm, policy: divergencePolicy };
+  if (prov.malformed.length) { report.blockedAt = 'entry:provenance-malformed'; return report; }        // §2: v null IFF absent-in-source
+  if (divergencePolicy === 'block' && prov.flags.length) { report.blockedAt = 'entry:snap-divergence'; return report; } // §3: fail-loud policy
+
   // BLOCKOUT — the certified scene_graph is the carrier every downstream stage must preserve.
   const blockout = harness.toScene();
-  report.stages.blockout = { source: 'harness.toScene', objects: blockout.objects.length };
+  report.stages.blockout = { source: 'harness.toScene', objects: blockout.objects.length,
+    provenanceCarried: blockout.objects.filter(o => o.fieldProvenance).length }; // §5.1 envelopes survive entry→blockout
 
   // VOXELIZE (inv1) — blockout/geometry → occupancy voxel. PENDING until injected.
   if (typeof voxelize !== 'function') { report.stages.voxelize = { pending: true }; return report; }
