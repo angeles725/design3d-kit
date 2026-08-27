@@ -93,4 +93,4 @@ for the user's decision — never appended to §Active by the run.
 
 `references/PIPELINE.md` · `references/DESIGNSPEC.md` · `references/GATES.md` ·
 `references/TRACK-THREEJS.md` · `references/TRACK-BLENDER.md` · `references/ROLES.md` ·
-`references/SELF-IMPROVEMENT.md` · templates in `assets/`
+`references/SELF-IMPROVEMENT.md` · `references/spatial-world-model.md` · templates in `assets/`

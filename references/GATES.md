@@ -312,6 +312,123 @@ Every review ends in exactly ONE `action`:
 - `request-input` — missing reference/dimension: ask the user; do not guess.
 - `stop` — requested fidelity unreachable from current inputs — a VALID result; say so with evidence.
 
+## Spatial, clash & mechanical-integrity gate
+
+This section EXTENDS the three-step gate above; it replaces nothing. The blind vision review stays the
+SOLE visual-acceptance authority (§Gate steps 3, §Blind-review protocol) and the ΔE00 colour gate stays
+as authored (§Verdict and action). Everything added here is either a MECHANICAL check (TEST
+jurisdiction, §Test-vs-render — a countable invariant a judge cannot see in one image) or an ADVISORY
+aggregation that FEEDS the existing review. All of it obeys the kit's superset discipline: a spec that
+DECLARES a threshold but records no measurement fails loud (like a missing `global_min` or an
+un-recorded `color_delta_e00`); a spec that declares none of these fields leaves prior gate behaviour
+byte-identical.
+
+### Deterministic SPATIAL / CLASH gate (mechanical)
+
+`library/harness/clash-detect.mjs` — `detectClashes({groups, allowedContact, tolerance}) →
+{clashes:[{a,b,depth}], gate}` — is the narrow-phase interference check, sibling of `geom-verify.mjs`
+(same pure-core / dynamic-`import('three'/'three-mesh-bvh')` split). It closes the overlap judgment
+`geom-verify` today punts to a human. It is an ORACLE: it REPORTS clashing part pairs + approximate
+penetration depth and NEVER repositions geometry (same discipline as `checkGeometry`'s advisory
+candidates, and as the spatial compiler in `references/spatial-world-model.md`).
+
+- **HARD-FAIL on real interior penetration only.** The pass rule is `intersects && depth > tolerance`,
+  never the boolean alone — a coplanar face touch (a welded port) is legal CONTACT, not a clash. Reuse
+  `geom-verify`'s `gap3D` vocabulary: `clear | touching` (weld, allowed) `| overlapping` (interior
+  defect, `depth > tolerance`). Penetration depth is the sampled ray-parity inside-penetration measure
+  (a deterministic LOWER bound), NEVER the AABB-overlap proxy (it fabricates depth on non-contacting
+  rotated/curved parts) and NEVER the closest-face-normal-sign test (unreliable at edges/corners).
+- **Broad→narrow cascade**: occupancy voxel → AABB → OBB → BVH — cheap convex rejects first, exact
+  triangle-triangle (Möller) BVH only on the survivors. The OBB tier keeps a ROTATED body's bounds tight
+  so an inflated AABB does not raise a false clash before the BVH pass. This is the same cascade the
+  spatial engine runs at placement time (`references/spatial-world-model.md`); here it runs at GATE time
+  on built mesh geometry.
+- **`allowedContact` is scoped to DIRECT owners only** — auto-populate it from each pipe's `{from,to}`
+  equipment and nothing else. A pipe legitimately enters the service FACE of the equipment it connects;
+  a pass-through crossing a THIRD body it does NOT connect to is not excluded and HARD-fails.
+- **Invariant set — rules 001–010** (the deterministic spatial contract the gate enforces): no
+  physical-volume overlap (001) … clearance volumes respected (007) … ports matched within tolerance,
+  in-bounds, no floating parts, min-elevation. No named part groups ⇒ SKIP (`mechanical.clash: null`,
+  absent — never a fabricated pass). Records `mechanical.clash`; hard-fails like `mechanical.tests`.
+  Jurisdiction: TEST (invisible in a single capture, countable) — not a blind-review item.
+
+### Mechanical hard-fails that CAP the score
+
+Mirroring "a critical feature below threshold FAILS the pass even with a high global score" (§Verdict),
+these COUNTABLE mechanical zeros cap the asset's Spatial-Intelligence score at **0.79** (7.9/10)
+regardless of visual quality — a pipe through an AHU cannot score ≥ 0.8 no matter how it renders:
+`CriticalClashes = 0`, `DisconnectedPipes = 0`, `InvalidGeometry = 0`, `OutOfBounds = 0`. The critical
+sub-scores — Geometry, Connectivity, Collision, Spatial — must EACH be ≥ 0.8 (a weak one is never
+averaged away, same rule as `layer_scores`). Proposed Spatial-Intelligence sub-weights when the review
+scores this category: Collisions 25 · Clearances 20 · Coordinates/frames 15 · Connectivity 15 ·
+Orientations 10 · Routing 10 · Duplicates/overlap 5.
+
+### BEST_VERSION retention + Self-Refine (extends the retry cap)
+
+A correction can REGRESS (a fresh judge re-scores untouched features; §Self-correction loop already
+warns a marginal PASS can flip). So on retry exhaustion RETAIN `BEST_VERSION = max(Q1, Q2, Q3)` — the
+highest-scoring version across the max-2 retries, not whichever attempt came last. Track `ΔQ` between
+attempts and STOP on diminishing returns (a correction that badly regresses another category is
+rejected, not banked). Treat a failed gate as **Self-Refine**: feed the review's structured critique
+(`defects` + `corrections`) back as the next attempt's brief, never a binary reject — this is what the
+existing max-2-retry loop consumes (§Self-correction loop).
+
+### 8-view multi-view CONSISTENCY score (ADVISORY — not acceptance)
+
+`library/harness/view-variance.mjs` (pure-core, no three) aggregates the per-view blind scores as
+`Score = μ − λσ` (λ ≈ 0.5): μ catches uniform wrongness, σ catches VIEW-DEPENDENT defects (missing
+back-faces, one-sided materials / flipped normals, head-on-only billboards). It is an ADVISORY
+aggregation ONLY — the blind VLM stays the sole visual authority (§Blind-review protocol); σ records a
+`view_variance` flag on the existing 0.90 multi-view cap, it does not accept or reject. **Dependency**:
+the reviewer brief must emit a per-view SCORE ARRAY (not one aggregate), and the N cameras must be a
+fixed scripted shot set (else σ just measures camera noise). The real win is per-view scoring: a "reads
+from the front, missing from the back" defect now trips the per-critical-feature FAIL rule PER VIEW
+instead of being averaged away.
+
+### Monte-Carlo P(clash) — OPT-IN only
+
+A `monteCarlo({sigmas, samples, seed})` mode on `clash-detect.mjs` perturbs each part's placement within
+declared tolerances (install ±20 / equip ±10 / struct ±15 mm) over K seeded draws and records
+`mechanical.clash_probability`. It is a RISK ESTIMATE over an ASSUMED distribution, not a ground-truth
+invariant — so it is ADVISORY by default and becomes a hard gate ONLY when the spec declares
+`clearanceRisk.pClashMax` (DESIGNSPEC.md §Schema), exactly mirroring the optional `colorTarget.deltaE00Max`
+pattern: declared ⇒ enforce `p_clash ≤ pClashMax`; declared-but-unrecorded ⇒ fail loud; absent ⇒
+byte-identical prior behaviour, never an unconditional auto-fail. Deterministic via a `mulberry32` seed
+(same seed → same P); build each `MeshBVH` once and perturb only the transform per draw (K = 1k–10k
+tractable headless). Conditional on the CLASH gate above being present (reuses its BVH primitive).
+
+### Topology gate — WIRE the existing checks
+
+`geom-verify.mjs` ALREADY exports `signedVolume` (inside-out / flipped winding), `edgeManifold` (open +
+non-manifold edges) and `meshIntegrity` (watertight) — but nothing GATES them today, so a design can
+ship non-watertight or inside-out geometry with no record. Wire them into a `mechanical.topology` block
+(`assets/review.schema.json` field; `assets/gate-state.mjs` reads it): **`insideOut` = HARD-FAIL** (a
+flipped-winding mesh the visual gate misses); **openEdges / non-manifold = REPORT + threshold** against a
+declared expectation (a cut duct end legitimately has open edges — gate on the declared expectation, not
+absolute closure). TEST jurisdiction. Small pure-JS extensions to `geom-verify.mjs` complete the doc's
+10 % Topology rubric component as an objective 0–1 score: `triangleQuality()` (sliver/degenerate),
+`normalConsistency()` (partial flips `signedVolume`'s global sign misses), `nonManifoldVertex()` (bowtie
+fans), `fScore(a,b,τ)` (precision/recall at τ). Zero new deps.
+
+### Auto PERF-BUDGET gate (extends the existing draws/tris budget)
+
+The gate ALREADY compares `probe.mjs` medians against `spec.perf_budget` (draws, tris; §Gate steps 1).
+v1.18 makes that budget declarable PER DEVICE CLASS as `maxDrawCalls` / `maxVisibleTriangles`
+(DESIGNSPEC.md §Schema, under `quality_contract`), enforced deterministically like `global_min` and
+`deltaE00Max`: **declared-but-missing measurement = fail loud; ABSENT = byte-identical prior behaviour**
+(the plain `perf_budget` path is unchanged). It is a threshold gate on numbers the kit already records —
+no new instrument.
+
+### Proxy→realistic TRANSFORM-PRESERVATION invariant
+
+The realistic (structural / materials) pass may ONLY SUBSTITUTE geometry for a blockout proxy — it must
+NOT move it. A mechanical check diffs each node's `center` / `rotation` / `size` / `ports` BEFORE vs
+AFTER the substitution and FAILS on any `delta > epsilon`. This catches the doc's own diagnosed failure
+point: a proxy carries its bbox + ports as semantic payload, and a realistic pass that silently
+re-places it invalidates every clash / clearance result the blockout already certified. TEST
+jurisdiction; records `mechanical.transform_preserved`. Pairs with the semantic-proxy blockout pass
+(TRACK-THREEJS §Pass ladder).
+
 ## Self-correction loop
 
 **On FAIL, DIAGNOSE BEFORE YOU BUILD.** Run the `diagnostician` role (ROLES.md) first: cheap,
