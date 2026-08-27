@@ -163,4 +163,22 @@ t('spine provenance stage carries a per-object certainty summary (§2, for the v
   assert.equal(r.stages.provenance.certainty.D3, undefined);          // untagged object not summarized
 });
 
+t('fieldProvenance envelopes reach the realista stage through the FULL spine, uncollapsed (§5.1 end-to-end)', () => {
+  const scene = { room:{size:[12,8,4]}, objects:[
+    { id:'D1', type:'duct', size:[0.6,0.4,0.4], center:[3,3,2],
+      fieldProvenance:{ width:{v:0.6,prov:'measured'}, height:{v:null,prov:'absent-in-source'}, bod:{v:3,prov:'measured'} } } ] };
+  let atVoxelize = null, atDeBox = null;
+  const voxelize = (bo) => { atVoxelize = bo; return { cells: bo.objects.length }; };
+  const deBox = (voxels, bo) => { atDeBox = bo; return { room: bo.room, objects: bo.objects.map(o => ({ ...o, material:'steel', mesh:o.id+'.glb' })) }; };
+  const r = runSpine({ scene, voxelize, deBox });
+  assert.equal(r.ok, true);
+  // §5.1: the envelope threaded entry→blockout→voxelize→deBox intact — never collapsed to a bare number
+  assert.equal(atVoxelize.objects[0].fieldProvenance.height.prov, 'absent-in-source');
+  assert.equal(atDeBox.objects[0].fieldProvenance.width.prov, 'measured');
+  assert.equal(atDeBox.objects[0].fieldProvenance.height.v, null); // absent stays null, not fabricated downstream
+  // and the certainty summary derivable at the realista stage is the weakest field (§2)
+  assert.equal(objectCertainty(atDeBox.objects[0].fieldProvenance), 'absent-in-source');
+  assert.equal(r.stages.provenance.certainty.D1, 'absent-in-source');
+});
+
 console.log(`\n${pass}/${pass} pipeline-spine tests green`);
