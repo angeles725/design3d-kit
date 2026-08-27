@@ -116,7 +116,10 @@ mechanical-integrity gate) with their declared inputs.
   gimbal-lock warning), `ports:{NAME:{DN, position:[lx,ly,lz], direction:[dx,dy,dz]}}`,
   `connections:[[portA,portB]], constraints}`. Ports carry a DIRECTION (unit vector) as well as a
   position; the object orientation derives from directions via `Quaternion.setFromUnitVectors`, never
-  authored Euler. The graph's RELATIONS are DETERMINISTIC COMPUTED PREDICATES — `clearance` (unary),
+  authored Euler. This schema is VALIDATED end-to-end — the F1/F2 flow-checks authored designs against it
+  and the shared `verify.mjs` scorer accepts both the flat `[lx,ly,lz]` and the richer `{position,direction}`
+  port forms, so the spec fields and the QC scorer agree. The graph's RELATIONS are DETERMINISTIC COMPUTED
+  PREDICATES — `clearance` (unary),
   `contact` / `alignment` (binary), `symmetry` / `equidistance` (higher-order) — NOT learned edges: the
   kit owns exact geometry, so these are QC predicates, not model inputs. Concept + engine:
   `references/spatial-world-model.md`.
