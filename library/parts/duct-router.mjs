@@ -169,6 +169,13 @@ function simplifyCells(cells) {
  *          '+' = increasing coord. monotonic (default true) forbids uphill moves on `axis`; minGrade
  *          requires net descent >= minGrade * horizontal path length. found:false when infeasible (e.g.
  *          end uphill of start under monotonic). Omit `slope` for the current unconstrained behavior.
+ *          CAVEAT (drainage flow-check, 2026-08-26): `slope` enforces monotonic descent + NET grade ≥
+ *          minGrade, but NOT per-run CONTINUOUS slope. An orthogonal router steps (drop, run, drop, run) —
+ *          an axis-aligned segment changes one coord at a time — so the drop concentrates in the vertical
+ *          segments and the horizontal runs come out FLAT (0% per-run grade). For a real CONDENSATE DRAIN
+ *          those flat runs POOL water; build it with a per-run slope transform (v1.19 `applyDrainageSlope`)
+ *          or accept flat runs for non-gravity ducts. As shipped this is correct + useful (monotonic +
+ *          net-grade + infeasibility rejection), just not a complete gravity-drain solution.
  * @returns {{found:boolean, waypoints:number[][], bends:{position:number[],inDir:number[],outDir:number[],turnAngle:number}[], length:number, cost:number, expansions:number}}
  *          waypoints in world coords (cell centers); `bends` is per-turn metadata (one entry per elbow),
  *          so bends.length is the elbow count; length = world length of the orthogonal path.
