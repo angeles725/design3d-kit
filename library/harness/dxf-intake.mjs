@@ -332,8 +332,34 @@ export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
   // cotas summary: lets the spine FAIL-LOUD when a sheet carries sized MTEXT but 0 DIMENSION entities
   // (real COB-IM2 case) instead of falsely reporting "no cotas". Detection only — no WxH/Ø field names yet.
   const sizedText = annotations.filter(a => a.sizedCota).length;
+
+  // stable per-entity ids (deterministic parse order) so an agent can ADDRESS the drawing without re-scanning
+  // (investigacion4 "UUID per trazo" + the getObjectsByLayer/getById tools). Additive: consumers ignore uid.
+  objects.forEach((o, i) => { o.uid = `o-${i + 1}`; });
+  geometry.forEach((g, i) => { g.uid = `g-${i + 1}`; });
+  annotations.forEach((a, i) => { a.uid = `a-${i + 1}`; });
+
   return { room, objects, geometry, schedule, dimensions, annotations, units,
     provenance: { route: 1, source: 'dxf', cotas: { dimensionEntities: dimensions.length, sizedText } } };
+}
+
+// --- scene_graph queries (agent addressability) --------------------------------------------------------
+// Every object/geometry/annotation carries a stable uid (deterministic parse order) and a layer, so an agent
+// can address the drawing without re-scanning it. investigacion4's named tools: getById / getObjectsByLayer.
+const layerOfEntry = (e) => e.layer ?? e.source?.layer;           // geometry/annotations: e.layer; objects: e.source.layer
+const layerEq = (a, b) => String(a ?? '').toUpperCase() === String(b ?? '').toUpperCase();
+
+export function getById(sg, uid) {
+  for (const arr of [sg.objects, sg.geometry, sg.annotations]) {
+    const hit = (arr || []).find(e => e.uid === uid);
+    if (hit) return hit;
+  }
+  return null;
+}
+export function getObjectsByLayer(sg, layer) { return (sg.objects || []).filter(o => layerEq(layerOfEntry(o), layer)); }
+export function getByLayer(sg, layer) {
+  const on = (e) => layerEq(layerOfEntry(e), layer);
+  return { objects: (sg.objects || []).filter(on), geometry: (sg.geometry || []).filter(on), annotations: (sg.annotations || []).filter(on) };
 }
 
 // Expand geometry[] into explicit world POLYLINES (LWPOLYLINE bulges → sampled arcs, ARC/CIRCLE sampled,
