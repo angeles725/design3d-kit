@@ -1,4 +1,5 @@
-// Semantic occupancy grid — the "second spatial memory" of the Spatial World Model
+// library: occupancy-grid  (parts/occupancy-grid.mjs) — semantic voxel grid + atomic reserve (investigador4).
+// The "second spatial memory" of the Spatial World Model
 // (references/spatial-world-model.md §occupancy; DESIGN §3.2 / §9b). Deterministic (cells set by
 // rasterizing KNOWN volumes, no probabilistic log-odds — we own the geometry), pure-Node, offline.
 // Backs canPlace broad-phase + the multi-agent reserve/lock (§9f) at grid resolution.

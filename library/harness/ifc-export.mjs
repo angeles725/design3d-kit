@@ -1,4 +1,5 @@
-// v1.19 candidate — IFC-EXPORT (inv4/BIM). Pure-Node IFC4 (ISO-10303-21 STEP text) emitter that maps a
+// library: ifc-export  (harness/ifc-export.mjs) — scene_graph→IFC4 connectivity export (investigador4).
+// Pure-Node IFC4 (ISO-10303-21 STEP text) emitter that maps a
 // certified scene_graph (objects + directional ports + connections) into IfcDistributionElement +
 // IfcDistributionPort + IfcRelConnectsPorts, so downstream BIM knows elements are CONNECTED, not just
 // visually touching. No web-ifc/WASM needed to WRITE (IFC is text). Node tool, never bundled in the dist.
