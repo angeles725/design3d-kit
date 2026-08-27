@@ -132,8 +132,17 @@ decision is grounded in the real occupied state, not its own stale mental model.
   effect, and a stronger model cannot reason it away. Conclusion: **single-agent → S2 is a guarantee;
   multi-agent concurrent → S2's reserve/lock is REQUIRED for correctness.** This is exactly how our own
   four-agent team avoids collisions (SendMessage + shared-repo coordination = the human analog of a
-  ReserveEngine). inv2's E4 (two REAL independent creadores contending for one zone) is the exercise expected
-  to yield the first NON-null result — prioritize it over more single-agent density instances.
+  ReserveEngine). **E4 MEASURED (provenance confirmed first-hand by both creadores, blind):** two independent
+  creadores placed blind into one room → naive-parallel merge = **2 HARD overlaps, score 6, FAIL**;
+  ReserveEngine lock-mediated (deny + fallback) = **0 overlaps, score 10, PASS**. Measured proof that S2's
+  reserve/lock (inv2's reserve-engine.mjs + contend.mjs) is REQUIRED for multi-agent correctness — the
+  observability limit is empirical, not theoretical.
+- **Reference implementation (S2 de-risk):** `scratchpad-research/spatial-engine/` — a ~110-line runnable
+  engine (canPlace cascade + placement ops + structured rejection report) deterministically solves the A2
+  instance to PLACEMENT PASS 10/10 (0 overlaps, 0 clearance intrusions). Routing is delegated to inv3's A*
+  (the demo's trivial router clips a neighbour in the packed scene — evidence the delegation is necessary).
+  S2 is a working prototype, not just a design. F1 (end-to-end spec→ops→route→QC flow, creador2) scored
+  9.5 PASS, confirming the full pipeline is executable by a model.
 
 ## 9. Second-pass enrichments (from a full re-read of investigacion.md §11, lines 7182-8110)
 Concrete details the first-pass skeleton missed; each refines a section above.
