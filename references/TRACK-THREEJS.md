@@ -135,7 +135,7 @@ Found overlays OVERRIDE the generic defaults below.
 |---|---|---|
 | blockout | voxel massing: silhouette, proportions, color blocks, part decomposition | threejs-geometry (instancing) |
 | structural | parametric rebuild: Cylinder/Torus/Extrude/Lathe, direct vertex edits for bespoke parts | threejs-geometry |
-| materials | named PBR palette (`const M = {...}`), near-binary metalness, `MeshPhysicalMaterial` for clearcoat/glass, emissive screens/LEDs | threejs-materials |
+| materials | named PBR palette (`const M = {...}`), near-binary metalness, `MeshPhysicalMaterial` for clearcoat/glass, emissive screens/LEDs. **PBR model reference:** Google Filament's published "Physically Based Rendering" spec is the canonical model three.js `MeshPhysicalMaterial` implements (roughness remap, energy conservation, IBL) — cite it for palette/roughness decisions; NOT a dependency (Filament is a C++/Vulkan renderer). | threejs-materials · [block22-23] · Filament PBR spec |
 | surface | CanvasTexture detail (fins, nameplates, dials) — draw, don't download | threejs-textures |
 | lighting-camera | rig per spec (`house-rig` or studio RectAreaLight variant), fog, composition: azimuth 40–45°, elevation 20–28° | threejs-lighting |
 | interaction-ui | spec `ui_controls`: toggles, raycast hotspots, DOM overlays | threejs-interaction |

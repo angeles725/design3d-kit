@@ -54,6 +54,25 @@ the code) with a mandatory header:
 5. Registry rows are append/update-in-place; a superseded block keeps its row with status
    `superseded-by: <name>` — history stays auditable.
 
+## Validating a library module (kit tree vs overlay)
+
+The kit tree canNOT render-validate its own modules — it vendors no three.js and no capture harness
+(those live in an overlay repo, e.g. `threejs-hvac-prototipos`), and modules import three via a bare
+`import 'three'` that resolves only through a browser importmap. So (from the v1.18 fittings + full-chain
+PoCs):
+- **Pure core** (zero-import math — `elbowPlacement`, `radialSegmentsFor`, `surfaceArea`, `duct-router`'s
+  A*, `clash-detect`'s pair/verdict core) is validated IN THE KIT TREE with plain Node:
+  `node library/<cat>/<mod>.test.mjs`. That is the only validation the kit tree can run.
+- **RENDER validation** of a builder (does the mesh look right, does it gate) is an OVERLAY-REPO activity:
+  author a design in the overlay, vendor three, copy the module with a provenance pointer (`@<commit>`),
+  and run the overlay's capture/probe harness. The kit tree alone cannot render.
+- **Node-only gate tools NEVER enter the offline single-file browser dist.** `clash-detect` needs
+  three-mesh-bvh and runs headless in Node — it is a build/gate tool (Rule 5), and the browser dist
+  bundles only render code. Same for any harness pulling a Node-only dependency.
+- **Array→Vector3 seam:** a pure module emits plain `[x,y,z]` (e.g. `duct-router` waypoints/bends,
+  `elbowPlacement` outputs); wrap at the three boundary (`new THREE.Vector3(...w)`). Feeding an array
+  where three wants a Vector3 silently makes NaN geometry (a real bug caught in the full-chain PoC).
+
 ## Extraction traps (learned from the hotel + cuarto-frio-safran inventory, 2026-07-14)
 
 - **Three module systems coexist in the corpus**: ESM importmap `three@0.160.0` (hotel, edificio,
