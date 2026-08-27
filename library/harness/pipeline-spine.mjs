@@ -10,17 +10,36 @@ import { SpatialHarness } from './spatial-harness.mjs';
 import { checkPassParity } from './pass-parity.mjs';
 import { checkDeBoxWinding } from './debox-winding.mjs';
 
+// Object-level certainty SUMMARY (PROVENANCE-CONTRACT §2): an object's certainty is the WEAKEST prov among
+// its per-quantity envelopes — absent-in-source (0) < inferred (1) < measured (2). A run that is
+// width-MEASURED but height-ABSENT summarizes as 'absent-in-source' (the viewer must paint an object by its
+// WORST field, never its best — a partly-unknown run is not "measured"). Returns null when the object carries
+// no valid envelopes (untagged — distinct from a fully-measured object). Pure.
+const _PROV_RANK = { 'absent-in-source': 0, inferred: 1, measured: 2 };
+export function objectCertainty(fieldProvenance) {
+  if (!fieldProvenance || typeof fieldProvenance !== 'object') return null;
+  let weakest = null, weakestRank = Infinity;
+  for (const env of Object.values(fieldProvenance)) {
+    if (!env || typeof env !== 'object' || !(env.prov in _PROV_RANK)) continue;
+    const rank = _PROV_RANK[env.prov];
+    if (rank < weakestRank) { weakestRank = rank; weakest = env.prov; }
+  }
+  return weakest;
+}
+
 // PROVENANCE scan (references/PROVENANCE-CONTRACT.md §2/§3). Each per-quantity envelope on an object's
-// `fieldProvenance` is {v, prov, raw?, snap?, deltaMm?}. Two spine duties here:
+// `fieldProvenance` is {v, prov, raw?, snap?, deltaMm?}. Three spine duties here:
 //  §2 invariant — `v === null` IFF `prov === 'absent-in-source'`; a violation is malformed provenance
 //     (an INFER/MEASURED with a null value, or an absent field carrying a fabricated number) → block.
+//  §2 summary  — per-object certainty = weakest envelope prov (objectCertainty), for the viewer legend.
 //  §3 divergence — when a snap retained a raw, `deltaMm = |v−raw|·1000` is a SIGNAL a snap may have
 //     masked a raw measurement error (P4); flag when `deltaMm >= snapDivergenceGateMm`.
 // Pure/synchronous; reports only. Envelopes are threaded untouched (never collapsed to a bare number, §5.1).
 export function scanProvenance(objects, gateMm) {
-  const flags = [], malformed = [];
+  const flags = [], malformed = [], certainty = {};
   for (const o of (objects || [])) {
     const fp = o?.fieldProvenance; if (!fp || typeof fp !== 'object') continue;
+    const c = objectCertainty(fp); if (c) certainty[o.id] = c;                                  // §2 summary
     for (const [quantity, env] of Object.entries(fp)) {
       if (!env || typeof env !== 'object') continue;
       const absent = env.prov === 'absent-in-source';
@@ -30,7 +49,7 @@ export function scanProvenance(objects, gateMm) {
         flags.push({ id: o.id, quantity, deltaMm: env.deltaMm, v: env.v, raw: env.raw, snap: env.snap });
     }
   }
-  return { flags, malformed };
+  return { flags, malformed, certainty };
 }
 
 // CO-REGISTRATION cross-check (PROVENANCE-CONTRACT §6, P5). Multi-sheet co-registration is a pure
@@ -86,7 +105,7 @@ export function runSpine({ scene, voxelize = null, deBox = null, gateOpts = {}, 
   // PROVENANCE (contract §2/§3) — surface snap-divergence + enforce the envelope invariant. Additive: the
   // fieldProvenance envelopes thread through untouched (harness toScene passthrough), never collapsed (§5.1).
   const prov = scanProvenance(entryScene.objects, snapDivergenceGateMm);
-  report.stages.provenance = { divergenceFlags: prov.flags, malformed: prov.malformed, gateMm: snapDivergenceGateMm, policy: divergencePolicy };
+  report.stages.provenance = { divergenceFlags: prov.flags, malformed: prov.malformed, certainty: prov.certainty, gateMm: snapDivergenceGateMm, policy: divergencePolicy };
   if (prov.malformed.length) { report.blockedAt = 'entry:provenance-malformed'; return report; }        // §2: v null IFF absent-in-source
   if (divergencePolicy === 'block' && prov.flags.length) { report.blockedAt = 'entry:snap-divergence'; return report; } // §3: fail-loud policy
 

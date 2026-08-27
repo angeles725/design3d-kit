@@ -1,6 +1,6 @@
 // characterization tests for the {CAD/foto/spec}→voxel→realista spine (dependency-free).
 import assert from 'node:assert/strict';
-import { runSpine, scanProvenance, crossCheckFrames } from './pipeline-spine.mjs';
+import { runSpine, scanProvenance, crossCheckFrames, objectCertainty } from './pipeline-spine.mjs';
 let pass = 0; const t = (n, f) => { f(); pass++; console.log('  ok -', n); };
 // a minimal in-bounds, non-overlapping run carrying provenance envelopes (PROVENANCE-CONTRACT §2)
 const provScene = (fp) => ({ room:{size:[12,8,4]}, objects:[ { id:'DUCT-1', type:'duct', size:[0.6,0.4,0.4], center:[3,3,2], fieldProvenance: fp } ] });
@@ -140,6 +140,27 @@ t('spine without frames skips the co-register stage (no false block)', () => {
   const r = runSpine({ scene: { room:{size:[12,8,4]}, objects:[{id:'A',type:'x',size:[1,1,1],center:[2,2,0.5]}] } });
   assert.equal(r.stages.coregister, undefined);
   assert.notEqual(r.blockedAt, 'entry:coregister-disagreement');
+});
+
+t('objectCertainty = WEAKEST envelope prov (§2): a partly-absent run summarizes as absent, not measured', () => {
+  assert.equal(objectCertainty({ width:{v:0.5,prov:'measured'}, height:{v:null,prov:'absent-in-source'}, bod:{v:3,prov:'measured'} }), 'absent-in-source');
+  assert.equal(objectCertainty({ width:{v:0.5,prov:'measured'}, height:{v:0.4,prov:'inferred'} }), 'inferred');
+  assert.equal(objectCertainty({ width:{v:0.5,prov:'measured'}, bod:{v:3,prov:'measured'} }), 'measured');
+  assert.equal(objectCertainty({}), null);            // no envelopes -> untagged, not 'measured'
+  assert.equal(objectCertainty(undefined), null);
+  assert.equal(objectCertainty({ width:{v:0.5,prov:'bogus'} }), null); // unknown prov ignored
+});
+
+t('spine provenance stage carries a per-object certainty summary (§2, for the viewer legend)', () => {
+  const scene = { room:{size:[12,8,4]}, objects:[
+    { id:'D1', type:'duct', size:[0.6,0.4,0.4], center:[3,3,2], fieldProvenance:{ width:{v:0.6,prov:'measured'}, height:{v:null,prov:'absent-in-source'} } },
+    { id:'D2', type:'duct', size:[0.5,0.5,0.5], center:[8,3,2], fieldProvenance:{ width:{v:0.5,prov:'measured'}, bod:{v:3,prov:'measured'} } },
+    { id:'D3', type:'duct', size:[0.4,0.4,0.4], center:[3,6,2] }, // no envelopes -> absent from the summary
+  ] };
+  const r = runSpine({ scene });
+  assert.equal(r.stages.provenance.certainty.D1, 'absent-in-source'); // worst field wins
+  assert.equal(r.stages.provenance.certainty.D2, 'measured');
+  assert.equal(r.stages.provenance.certainty.D3, undefined);          // untagged object not summarized
 });
 
 console.log(`\n${pass}/${pass} pipeline-spine tests green`);
