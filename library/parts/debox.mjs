@@ -31,17 +31,23 @@ const BUILDER_FOR = {
 const DEFAULT_BUILDER = 'rounded-box';
 
 const axisIndex = (axis) => ({ x: 0, y: 1, z: 2 }[axis] ?? 1); // default revolve/extrude axis = Y
+const longestAxis = (size) => ['x', 'y', 'z'][size.indexOf(Math.max(...size))];
+// The revolve/run axis: honor an explicit part.axis, else INFER from the longest bbox dimension (i2 review
+// #b — a HORIZONTAL tank without an explicit axis must not build vertical; its length IS its revolve axis).
+const resolveAxis = (part) => part.axis ?? longestAxis(part.size);
 
 // Derive builder params from the part's bbox `size` (so the proxy fits the SAME envelope — no size drift).
 function builderParams(builder, part) {
   const [sx, sy, sz] = part.size;
-  const ai = axisIndex(part.axis);
-  const along = part.size[ai];                     // length along the part's axis
-  const radial = Math.min(...part.size.filter((_, i) => i !== ai)) / 2; // radius from the tighter cross-axis
+  const ai = axisIndex(resolveAxis(part));
+  const along = part.size[ai];                     // length along the part's (resolved) axis
+  // radial = HALF the TIGHTER cross-dimension: a conservative INSCRIBE (i2 review #a — for a non-square
+  // bbox the vessel under-fills the wider cross-axis; intentional, do not "fix" to the wider one).
+  const radial = Math.min(...part.size.filter((_, i) => i !== ai)) / 2;
   switch (builder) {
-    case 'lathe-body': return { profile: 'vessel', radius: radial, height: along, headRatio: 0.25, axis: part.axis ?? 'y' };
+    case 'lathe-body': return { profile: 'vessel', radius: radial, height: along, headRatio: 0.25, axis: resolveAxis(part) };
     case 'superquadric': return { a: sx / 2, b: sy / 2, c: sz / 2, e1: 0.35, e2: 0.35 };
-    case 'rect-duct': return { width: sx, height: sz, section: part.section ?? null };
+    case 'rect-duct': return { width: sx, height: sz, section: part.section ?? null, axis: resolveAxis(part) };
     case 'hvac-fittings': return { kind: part.type, section: part.section ?? { radius: radial } };
     case 'torus': return { ringRadius: Math.max(sx, sz) / 2, tubeRadius: Math.min(sx, sy, sz) / 2 };
     case 'rounded-box': return { w: sx, h: sy, d: sz, fillet: Math.min(sx, sy, sz) * 0.06 };
@@ -89,7 +95,7 @@ export async function deBox(blockout, material) {
       } else if (p.builder === 'rect-duct') {
         // a straight box duct: a 1-segment run through the part's center along its axis
         const { makeRectDuct } = await import('./rect-duct.mjs');
-        const half = p.size[axisIndex(p.axis)] / 2, ai = axisIndex(p.axis);
+        const half = p.size[axisIndex(p.builderParams.axis)] / 2, ai = axisIndex(p.builderParams.axis);
         const a = [0, 0, 0], b = [0, 0, 0]; a[ai] = -half; b[ai] = half;
         mesh = await makeRectDuct([a, b], { width: p.builderParams.width, height: p.builderParams.height, capEnds: true }, material);
       } else if (p.builder === 'lathe-body') {
@@ -100,7 +106,7 @@ export async function deBox(blockout, material) {
         const profile = filletedCylinderProfile({ radius: bp.radius, height: bp.height, fillet: Math.min(bp.radius * 0.25, bp.height * 0.4) });
         mesh = await makeLatheBody(profile, {}, material);
         mesh.geometry.translate(0, -bp.height / 2, 0);       // base y=0..h → centered on the part center
-        const ai = axisIndex(p.axis);
+        const ai = axisIndex(p.builderParams.axis);          // resolved axis (explicit, else longest bbox dim)
         if (ai === 0) mesh.geometry.rotateZ(-Math.PI / 2);   // revolve axis Y → X
         else if (ai === 2) mesh.geometry.rotateX(Math.PI / 2); // Y → Z
       } else if (p.builder === 'torus') {
