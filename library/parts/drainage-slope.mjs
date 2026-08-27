@@ -1,4 +1,4 @@
-// library (STAGED v1.19): drainage-slope  (scratchpad-research/staged/v1.19/drainage-slope.mjs)
+// library: drainage-slope  (parts/drainage-slope.mjs) — condensate-drain per-run slope (investigador3).
 // source: design3d MATHQC §3.1 #14 · condensate-drain pooling fix · PoC by creador1 (2026-08-26).
 //         NOT v1.18 (that branch is frozen feature-complete); this is a v1.19 candidate, isolated here.
 //         Behind it: the orthogonal router's slope option guarantees monotonic + NET grade but leaves
