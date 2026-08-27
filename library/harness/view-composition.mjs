@@ -16,6 +16,12 @@
 //   lookAtPerspective() below. NDC is the OpenGL cube: x,y ∈ [-1,1] visible, z ∈ [-1,1], w>0 in front of eye.
 //   AABB = { lo:[x,y,z], hi:[x,y,z] } (world). Projected extent uses the 8-corner screen bbox — a documented
 //   OVER-approximation of the true silhouette, correct for a pre-filter/advisory.
+//
+// CONTRACT — RENDERED, not whole-scene: `otherAABBs` must be the geometry ACTUALLY DRAWN in this view (post
+//   clip/cull), not every object in the scene. The metric measures GEOMETRY; two renders that differ only by
+//   what is drawn (WU-L4-A: dim vs hide, SAME camera + SAME AABBs) discriminate ONLY if the caller feeds the
+//   surviving set. Pass rendered-only, or pass all with `visible:false` on the excluded ones (the module
+//   filters those). Whole-scene AABBs with no visibility silently report low dominance even in an isolated view.
 
 const EPS = 1e-9;
 
@@ -89,7 +95,13 @@ const countGrid = (grid) => { let n = 0; for (let k = 0; k < grid.length; k++) i
  * Objective composition of a rendered view (Revisor WU-L4-A). Measures how much of the frame the SUBJECT
  * covers vs everything else, so a judge scores numbers instead of an impression.
  * @param {{lo:number[],hi:number[]}} subjectAABB  the focus object's world AABB
- * @param {Array<{lo:number[],hi:number[]}>} otherAABBs  every OTHER object's world AABB
+ * @param {Array<{lo:number[],hi:number[],visible?:boolean}>} otherAABBs  the OTHER objects' world AABBs — the
+ *   geometry ACTUALLY RENDERED in this view (post-clip / post-cull), NOT the whole scene. This distinction is
+ *   load-bearing (Revisor WU-L4-A): the FAIL (dim) and PASS (hide) states share the SAME camera and the SAME
+ *   AABBs — only what is DRAWN differs. Feeding whole-scene AABBs makes dominanceRatio identical across those
+ *   renders and it stops discriminating the exact case it exists for. To let a viewer hook expose "all runs +
+ *   visibility" instead of pre-filtering, each entry may carry `visible:false` to be EXCLUDED (missing/true =
+ *   included). So: pass rendered-only, OR pass all-with-`visible`-flags — never whole-scene with no visibility.
  * @param {number[]} viewProj  column-major 4x4 view-projection (three element order)
  * @param {{gridN?:number, minAreaFrac?:number}} [opts]  grid resolution; min projected frac to count "in frame"
  * @returns {{subjectOccupancy:number, nonSubjectInFrameCount:number, nonSubjectProjectedAreaFrac:number, dominanceRatio:number}}
@@ -105,6 +117,7 @@ export function viewComposition(subjectAABB, otherAABBs = [], viewProj, opts = {
 
   const nonGrid = new Uint8Array(total); let inFrame = 0;
   for (const a of otherAABBs) {
+    if (a && a.visible === false) continue;                          // excluded by the render (clipped/culled)
     const b = projectAabbToNdcBox(viewProj, a);
     if (!b) continue;
     if (boxAreaFrac(b) >= minAreaFrac) inFrame++;                    // counts as a visible non-subject object

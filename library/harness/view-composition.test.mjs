@@ -59,4 +59,24 @@ t('focusReadabilityFlag: flags a focus-declared view that cannot read (low domin
   assert.equal(f.reasons.length, 2); // both conditions trip
 });
 
+t('visible flag discriminates dim(FAIL) vs hide(PASS) with the SAME camera + SAME AABBs (Revisor catch)', () => {
+  // The exact WU-L4-A subtlety: fail(dim) and pass(hide) share one camera and one AABB set — only what is
+  // DRAWN differs. dominanceRatio must move only when the RENDERED set changes, not the scene set.
+  const subject = box(0,0,0, 0.6,0.6,0.1);
+  const network = [];
+  for (let gx = -6; gx <= 6; gx++) for (let gy = -6; gy <= 6; gy++) {
+    if (gx === 0 && gy === 0) continue;
+    network.push(box(gx * 0.7, gy * 0.7, 0, 0.3, 0.3, 0.1));
+  }
+  const dimFAIL  = viewComposition(subject, network, cam);                                       // all drawn
+  const hidePASS = viewComposition(subject, network.map(a => ({ ...a, visible: false })), cam);  // clipped away
+  assert.ok(dimFAIL.dominanceRatio < 0.5, `dim should read low, got ${dimFAIL.dominanceRatio}`);
+  assert.equal(hidePASS.dominanceRatio, 1);                 // nothing non-subject survives the clip
+  assert.equal(hidePASS.nonSubjectInFrameCount, 0);
+  assert.equal(hidePASS.nonSubjectProjectedAreaFrac, 0);
+  // missing/true visible = included (back-compat: identical to before the flag existed)
+  const explicitTrue = viewComposition(subject, network.map(a => ({ ...a, visible: true })), cam);
+  assert.equal(explicitTrue.dominanceRatio, dimFAIL.dominanceRatio);
+});
+
 console.log(`\n${pass}/${pass} view-composition tests green`);
