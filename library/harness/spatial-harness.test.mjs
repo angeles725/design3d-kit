@@ -187,4 +187,28 @@ t("array-form ports (no DN) still work unchanged; portDN round-trips through toS
   assert.equal(r.success, true); assert.deepEqual(r.connection.worldA, [3,2,1]); assert.equal(r.connection.dnA, 80);
 });
 
+
+t("BIM fields (category/system/level/parameters/type) round-trip through toScene/fromScene", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"CH-01",type:"chiller",size:[3,1.2,1.8],center:[2,2,0.9],
+    category:"equipment",system:"CHW",level:"L02",parameters:{tons:400}});
+  const scene = h.toScene(); const o = scene.objects[0];
+  assert.equal(o.category,"equipment"); assert.equal(o.system,"CHW"); assert.equal(o.level,"L02");
+  assert.equal(o.parameters.tons,400); assert.equal(o.type,"chiller");
+  const h2 = SpatialHarness.fromScene(scene);
+  assert.equal(h2.getObject("CH-01").system,"CHW");
+  assert.deepEqual(h2.toScene(), scene);
+});
+t("fromScene auto-connects a runs/connections list by identity; skips free: ends", () => {
+  const scene = { room:{size:[12,8,4]},
+    objects:[
+      {id:"ELB-0001",type:"elbow",size:[0.4,0.4,0.4],center:[3,3,0.2],ports:{A:[-0.2,0,0],B:[0,0.2,0]},portDN:{A:100,B:100}},
+      {id:"SEG-0001",type:"pipe",size:[0.3,0.3,1],center:[3,4.5,0.15],ports:{a:[0,-0.75,0]},portDN:{a:100}}
+    ],
+    connections:[{run:"R1",a:"ELB-0001.B",b:"SEG-0001.a"},{run:"R2",a:"ELB-0001.A",b:"free:R2:b"}] };
+  const h = SpatialHarness.fromScene(scene);
+  assert.equal(h.connectedTo("ELB-0001").includes("SEG-0001"), true);
+  assert.equal(h.connections.length, 1);
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);
