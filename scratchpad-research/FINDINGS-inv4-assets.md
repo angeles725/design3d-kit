@@ -45,3 +45,18 @@ Canonical repo `ahujasid/blender-mcp`; geometry/materials only via `execute_blen
 `get_viewport_screenshot` broken across the WSL↔Windows-Blender boundary (kit already documents issues #187/#189; render-to-file workaround).
 Sketchfab license is NOT auto-persisted by the tool → provenance schema (url·author·license·sha256) must be filled manually; for AI-gen meshes there is often no upstream author/url/license to record at all.
 - Paths: `references/TRACK-BLENDER.md` (community MCP section).
+
+### A4 — Infinigen (from investigacion2.md) — PROCEDURAL generator, a WEAKER block than neural gens  [nuance]
+`princeton-vl/infinigen` — BSD-3-Clause CODE, 7.2k★, active (pushed 2026-08), Python/Blender. **PROCEDURAL**
+(rule/node-based math), NOT a trained neural net. Critical distinction for Rule 8:
+- No training-data provenance risk (nothing scraped) — unlike Hunyuan3D/Rodin/TRELLIS. An Infinigen output is a
+  deterministic function of BSD-licensed code + a seed, so the reasonable reading is "your own generation, yours
+  to use."
+- BUT the repo states NOTHING explicit about generated-asset licensing. So under the LETTER of Rule 8
+  ("known license ≥ CC-BY, recorded before first use") it still lacks a recordable CC0/CC-BY string.
+- Verdict: MUCH weaker block than the neural generators (no territorial exclusions, no training-data risk, no
+  "we claim no rights" disclaimer). Recommendation: allow Infinigen as a tier-C source with provenance recorded
+  as "procedural output of BSD-3-Clause Infinigen, no explicit output grant" ([INFER], never [CERT]) — OR seek a
+  one-line maintainer clarification to promote it. Do NOT lump it with Hunyuan3D/Rodin/TRELLIS in a blanket
+  block; the risk profiles differ. (Confirmed with inv2: Infinigen + BlenderMCP are the only asset/license items
+  in investigacion2; no NEW AI generator surfaced there.)
