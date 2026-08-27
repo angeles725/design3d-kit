@@ -52,11 +52,21 @@ function _endpointDelta(a, b) {
  * FRAME TRAP: the DATA blob applies per-plane sheet offsets (14A [0,0], 14B [37.25,-0.5], 14C [33.8,-1.05]).
  * Both sides MUST be compared in the SAME frame — if one isn't offset-aligned, 14B/14C disagree by tens of
  * metres for the same run. A large SYSTEMATIC per-plane delta is itself the diagnostic (frame mismatch, not
- * a wrong run). A `sample` (few ids) suffices to decide same-vs-different producer; no full sweep needed.
+ * a wrong run).
+ * SAMPLING (@3D): a SINGLE sample does NOT decide same-vs-different producer — two independent extractions
+ * agree on the big obvious TRUNKS and diverge on small branches / sheet overlaps / anything threshold-bound,
+ * so a lone sample landing on a trunk passes green and proves nothing. Use a small but DELIBERATELY
+ * STRATIFIED `sample`: a few runs per SHEET (14A/14B/14C — 14C is INFER not CERT, likeliest to diverge) and
+ * per CLASS (trunk/branch/small — small is where vectorization thresholds separate). 10–15 chosen this way
+ * beat 100 random. The caller (inv3, who has sheet+class) picks the sample.
+ * RESULT IS NOT BINARY (`verdict`): 'all-match' = same producer OR two that converge; 'none-match' =
+ * different producers (compose is not a naming problem); 'partial' = the sets OVERLAP but DIVERGE — a 1:1
+ * compose is FALSE exactly on the runs that matter, and the ONLY outcome where the gate can look healthy and
+ * not be. Treat 'partial' as the alarm, not just `ok:false`.
  * @param {Array<{id:string,p0:number[],p1:number[],L?:number}>} runsA  one extraction (e.g. inv3 vectorizer)
  * @param {Array<{id:string,p0:number[],p1:number[],L?:number}>} runsB  the other (e.g. DATA.runs), same frame
- * @param {{posTol?:number, sample?:string[], key?:string}} [opts]  posTol metres (default 0.05); optional id subset
- * @returns {{ok:boolean, mismatches:Array<{id:string,maxPos:number,lenDelta:number}>, checked:number, shared:number}}
+ * @param {{posTol?:number, sample?:string[], key?:string}} [opts]  posTol metres (default 0.05); optional stratified id subset
+ * @returns {{ok:boolean, verdict:'all-match'|'none-match'|'partial'|'none-checked', mismatches:Array<{id:string,maxPos:number,lenDelta:number}>, matched:number, checked:number, shared:number}}
  */
 export function validateRunIdentityByGeometry(runsA, runsB, opts = {}) {
   const { posTol = 0.05, sample = null, key = 'id' } = opts;
@@ -73,7 +83,12 @@ export function validateRunIdentityByGeometry(runsA, runsB, opts = {}) {
     const d = _endpointDelta(a, b);
     if (d.maxPos > posTol) mismatches.push({ id: a[key], ...d });
   }
-  return { ok: mismatches.length === 0, mismatches, checked, shared };
+  const matched = checked - mismatches.length;
+  const verdict = checked === 0 ? 'none-checked'
+    : mismatches.length === 0 ? 'all-match'
+    : matched === 0 ? 'none-match'
+    : 'partial';                                       // overlapping-but-diverging — the dangerous case
+  return { ok: mismatches.length === 0, verdict, mismatches, matched, checked, shared };
 }
 
 /**
