@@ -92,8 +92,34 @@ export async function deBox(blockout, material) {
         const half = p.size[axisIndex(p.axis)] / 2, ai = axisIndex(p.axis);
         const a = [0, 0, 0], b = [0, 0, 0]; a[ai] = -half; b[ai] = half;
         mesh = await makeRectDuct([a, b], { width: p.builderParams.width, height: p.builderParams.height, capEnds: true }, material);
+      } else if (p.builder === 'lathe-body') {
+        // real surface of revolution (tank/vessel/boiler): a filleted-cylinder vessel profile revolved
+        // around Y, then centered and oriented to the part's axis. three's LatheGeometry winds outward.
+        const { makeLatheBody, filletedCylinderProfile } = await import('./lathe-body.mjs');
+        const bp = p.builderParams;
+        const profile = filletedCylinderProfile({ radius: bp.radius, height: bp.height, fillet: Math.min(bp.radius * 0.25, bp.height * 0.4) });
+        mesh = await makeLatheBody(profile, {}, material);
+        mesh.geometry.translate(0, -bp.height / 2, 0);       // base y=0..h → centered on the part center
+        const ai = axisIndex(p.axis);
+        if (ai === 0) mesh.geometry.rotateZ(-Math.PI / 2);   // revolve axis Y → X
+        else if (ai === 2) mesh.geometry.rotateX(Math.PI / 2); // Y → Z
+      } else if (p.builder === 'torus') {
+        // flange ring / bezel: a real torus in the part's plane (three's TorusGeometry winds outward)
+        const bp = p.builderParams;
+        mesh = new THREE.Mesh(new THREE.TorusGeometry(bp.ringRadius, bp.tubeRadius, 12, 24), material);
+      } else if (p.builder === 'rounded-box') {
+        // soft-beveled cabinet/skid/chiller/ahu: RoundedBoxGeometry (three addon) at the exact bbox
+        const bp = p.builderParams;
+        let g;
+        try {
+          const { RoundedBoxGeometry } = await import('three/addons/geometries/RoundedBoxGeometry.js');
+          g = new RoundedBoxGeometry(bp.w, bp.h, bp.d, 1, bp.fillet);
+        } catch { g = new THREE.BoxGeometry(bp.w, bp.h, bp.d); }
+        mesh = new THREE.Mesh(g, material);
       } else {
-        // lathe-body / torus / rounded-box / fallback: a proxy box at the exact bbox (geometry follow-up)
+        // hvac-fittings (real duct fittings go through the vectorizer→fitting-select→hvac-fittings chain,
+        // not the equipment de-box path) / marching-cubes shell (organic-shell follow-up) / unknown:
+        // a proxy box at the exact bbox — preserves size, debox-winding still holds (box winds outward).
         mesh = new THREE.Mesh(new THREE.BoxGeometry(...p.size), material);
       }
     } catch { mesh = new THREE.Mesh(new THREE.BoxGeometry(...p.size), material); }

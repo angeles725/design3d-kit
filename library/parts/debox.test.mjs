@@ -95,3 +95,26 @@ test('runs on the shared duct-network fixture (0 drift, 0 unmapped; skips until 
 test('deterministic', () => {
   assert.equal(JSON.stringify(deBoxPlan(blockout())), JSON.stringify(deBoxPlan(blockout())));
 });
+
+// three-integration: real per-builder geometry builds outward-wound (skips if three unresolvable).
+test('deBox builds REAL geometry per builder, all outward-wound (signedVolume>0) + 0 drift', async () => {
+  let THREE; try { THREE = await import('three'); } catch { return; } // skip in bare CI
+  const { deBox } = await import('./debox.mjs');
+  const { checkDeBoxGroupWinding } = await import('../harness/debox-winding.mjs');
+  const { checkPassParity } = await import('../harness/pass-parity.mjs');
+  const mat = new THREE.MeshStandardMaterial();
+  const blockout = { parts: [
+    { id: 'TK', type: 'tank', center: [1, 1, 1], size: [1.2, 2, 1.2], axis: 'y' },     // lathe-body
+    { id: 'FL', type: 'flange', center: [2, 2, 0], size: [0.4, 0.4, 0.08] },            // torus
+    { id: 'CH', type: 'chiller', center: [3.5, 8, 0.9], size: [3, 1.2, 1.8] },          // rounded-box
+    { id: 'P', type: 'pump', center: [3.5, 5.5, 0.45], size: [0.8, 0.6, 0.9] },         // superquadric
+    { id: 'D', type: 'duct', center: [6, 5, 0.5], size: [0.4, 0.3, 2], axis: 'z' },     // rect-duct
+  ] };
+  const group = await deBox(blockout, mat);
+  assert.equal(group.children.length, 5);
+  const w = checkDeBoxGroupWinding(group);
+  assert.equal(w.ok, true, `winding: no inside-out builder (got ${JSON.stringify(w.insideOut)})`);
+  const built = { objects: group.children.map((m) => ({ id: m.name, type: m.userData.type, center: [m.position.x, m.position.y, m.position.z], size: m.userData.size })) };
+  const src = { objects: blockout.parts.map((p) => ({ id: p.id, type: p.type, center: p.center, size: p.size })) };
+  assert.equal(checkPassParity(src, built).ok, true);
+});
