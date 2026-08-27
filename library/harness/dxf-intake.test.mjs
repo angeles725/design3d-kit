@@ -302,3 +302,101 @@ test('toLineBuffers yields consistent {positions,index} line-buffers', () => {
   assert.ok(positions.length > 0 && index.length > 0);
   for (const [i, j] of index) { assert.ok(i >= 0 && j < positions.length && j === i + 1); }
 });
+
+// a DXF with a BLOCKS section: block PUMP_SKID = 1.5×0.8 footprint (LWPOLYLINE), INSERTed at scale
+const blockDxf = (scale = '1.0') => `0
+SECTION
+2
+BLOCKS
+0
+BLOCK
+8
+0
+2
+PUMP_SKID
+10
+0.0
+20
+0.0
+30
+0.0
+0
+LWPOLYLINE
+8
+0
+90
+4
+70
+1
+10
+0.0
+20
+0.0
+10
+1.5
+20
+0.0
+10
+1.5
+20
+0.8
+10
+0.0
+20
+0.8
+0
+ENDBLK
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+INSERT
+8
+EQUIP
+2
+PUMP_SKID
+10
+5.0
+20
+5.0
+30
+0.0
+41
+${scale}
+42
+${scale}
+43
+${scale}
+50
+0.0
+0
+ENDSEC
+0
+EOF`;
+
+test('BLOCK-DEF footprint sizes the INSERT (certified X/Y from the drawing, height from catalog for a 2D block)', () => {
+  const o = readDxf(blockDxf()).objects[0];
+  assert.equal(o.type, 'pump');
+  assert.deepEqual(o.size, [1.5, 0.8, 0.9]);        // 1.5×0.8 from the block footprint; 0.9 = pump catalog height
+  assert.equal(o.source.sizeSource, 'block-def-2d');
+  assert.deepEqual(o.center, [5, 5, 0]);
+  // the block-def is NOT leaked as a main entity
+  assert.equal(readDxf(blockDxf()).objects.length, 1);
+});
+
+test('INSERT scale multiplies the block-def footprint', () => {
+  const o = readDxf(blockDxf('2.0')).objects[0];
+  assert.deepEqual(o.size.slice(0, 2), [3.0, 1.6]);  // footprint ×2; height still catalog
+});
+
+test('block-def overrides the catalog default (a real drawing footprint beats a type guess)', () => {
+  // block CHILLER_X with a 4×1.5 footprint should win over the chiller catalog [3,1.2,*]
+  const dxf = blockDxf().replace(/PUMP_SKID/g, 'CHILLER_X').replace('1.5\n20\n0.0\n10\n1.5\n20\n0.8', '4.0\n20\n0.0\n10\n4.0\n20\n1.5');
+  const o = readDxf(dxf).objects[0];
+  assert.equal(o.type, 'chiller');
+  assert.equal(o.size[0], 4.0);                      // from the drawing, not catalog 3.0
+  assert.ok(o.source.sizeSource.startsWith('block-def'));
+});

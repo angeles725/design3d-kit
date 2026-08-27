@@ -75,12 +75,39 @@ function entities(pairs) {
 const first = (e, code) => { const p = e.pairs.find(x => x.code === code); return p ? p.value : undefined; };
 const layerOf = (e) => (first(e, 8) || '0').trim();
 
+// world points of a block-definition entity (for the block's footprint bbox)
+function collectPoints(e) {
+  const pts = [];
+  if (e.type === 'LINE') { pts.push([num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')], [num(first(e, 11)), num(first(e, 21)), num(first(e, 31) ?? '0')]); }
+  else if (e.type === 'LWPOLYLINE') { let x = null; for (const p of e.pairs) { if (p.code === 10) x = num(p.value); else if (p.code === 20 && x != null) { pts.push([x, num(p.value), 0]); x = null; } } }
+  else if (e.type === 'ARC' || e.type === 'CIRCLE') { const c = [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')], r = num(first(e, 40)); pts.push([c[0] - r, c[1] - r, c[2]], [c[0] + r, c[1] + r, c[2]]); }
+  else if (e.type === 'POINT') pts.push([num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')]);
+  return pts.filter(p => p.every(Number.isFinite));
+}
+// scan the flat entity list: pull BLOCK…ENDBLK definitions (name → footprint size), return the MAIN entities.
+function extractBlocks(ents) {
+  const blocks = {}; const main = []; let cur = null;
+  for (const e of ents) {
+    if (e.type === 'BLOCK') { cur = { name: (first(e, 2) || '').trim(), pts: [] }; continue; }
+    if (e.type === 'ENDBLK') { if (cur) { blocks[cur.name] = bboxSize(cur.pts); cur = null; } continue; }
+    if (cur) cur.pts.push(...collectPoints(e)); else main.push(e);
+  }
+  return { blocks, main };
+}
+function bboxSize(pts) {
+  if (!pts.length) return null;
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (const p of pts) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], p[i]); mx[i] = Math.max(mx[i], p[i]); }
+  return [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
+}
+
 export function readDxf(text, { units = 'm' } = {}) {
   const src = (e) => ({ layer: layerOf(e), entity: e.type, units, scale: 1 });
   const objects = [], geometry = [], schedule = [], dimensions = [];
   let pendingInsert = null; // INSERT awaiting its ATTRIBs until SEQEND
 
-  for (const e of entities(parsePairs(text))) {
+  const { blocks, main } = extractBlocks(entities(parsePairs(text)));
+  for (const e of main) {
     switch (e.type) {
       case 'LINE':
         geometry.push({ kind: 'segment', layer: layerOf(e),
@@ -109,14 +136,23 @@ export function readDxf(text, { units = 'm' } = {}) {
         const block = (first(e, 2) || '').trim();
         const type = normalizeType(block);
         const catSize = SIZE_CATALOG[type];
+        const scale = [num(first(e, 41) ?? '1'), num(first(e, 42) ?? '1'), num(first(e, 43) ?? '1')];
+        // size ladder: ATTRIB SIZE (later) > block-def footprint > type catalog > placeholder.
+        // A 2D plan block gives a certified X/Y footprint but no height → take height from the catalog.
+        const bdef = blocks[block];
+        let size, sizeSource;
+        if (bdef && (bdef[0] > 1e-6 || bdef[1] > 1e-6)) {
+          const dx = bdef[0] * scale[0], dy = bdef[1] * scale[1], dz = bdef[2] * scale[2];
+          const flat = dz <= 1e-6;
+          size = [dx > 1e-6 ? dx : (catSize ? catSize[0] : 1), dy > 1e-6 ? dy : (catSize ? catSize[1] : 1), flat ? (catSize ? catSize[2] : 1) : dz];
+          sizeSource = flat ? 'block-def-2d' : 'block-def';   // 2D footprint + catalog height, or full 3D bbox
+        } else if (catSize) { size = [...catSize]; sizeSource = 'catalog'; }
+        else { size = [1, 1, 1]; sizeSource = 'placeholder'; }
         pendingInsert = {
           id: block || 'BLOCK',                                // block name until a TAG attrib overrides
-          type,
-          size: catSize ? [...catSize] : [1, 1, 1],            // Route-1 catalog default; ATTRIB SIZE overrides
+          type, size,
           center: [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')],
-          source: { ...src(e), block, sizeSource: catSize ? 'catalog' : 'placeholder',
-            scale: [num(first(e, 41) ?? '1'), num(first(e, 42) ?? '1'), num(first(e, 43) ?? '1')],
-            rotationDeg: num(first(e, 50) ?? '0') },
+          source: { ...src(e), block, sizeSource, scale, rotationDeg: num(first(e, 50) ?? '0') },
         };
         objects.push(pendingInsert);
         break;
