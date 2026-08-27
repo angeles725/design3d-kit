@@ -45,3 +45,15 @@ eq(signedPow(0, 2), 0, 'signedPow(0, 2) === 0');
 
 console.log(`\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail > 0 ? 1 : 0);
+
+// winding regression (investigador2): a closed superquadric must have POSITIVE signed volume (outward
+// normals); a negative volume = inside-out, the flip that shipped before this fix.
+import assert from 'node:assert/strict';
+import { superquadricGrid as _sqg } from './superquadric.mjs';
+{
+  const { positions, indices } = _sqg({ a:1,b:1,c:1, e1:1,e2:1, uSeg:24, vSeg:16 });
+  let V=0; for(let t=0;t<indices.length;t+=3){ const P=i=>[positions[3*indices[t+i]],positions[3*indices[t+i]+1],positions[3*indices[t+i]+2]]; const [a,b,c]=[P(0),P(1),P(2)]; V+=a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]); } V/=6;
+  assert.ok(V > 0, `superquadric signed volume must be positive (outward normals); got ${V.toFixed(4)}`);
+  assert.ok(Math.abs(V - 4/3*Math.PI) < 0.3, `unit-sphere superquadric volume ~4.19; got ${V.toFixed(4)}`);
+  console.log('  ok - superquadric winding: signed volume positive (outward)', V.toFixed(4));
+}

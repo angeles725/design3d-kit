@@ -86,8 +86,8 @@ export function superquadricGrid({ a, b, c, e1, e2, uSeg = 24, vSeg = 16 }) {
       const v10 = (j + 1) * cols + k;
       const v11 = (j + 1) * cols + (k + 1);
       // two triangles over the quad's four corner vertex ids
-      indices.push(v00, v10, v11);
-      indices.push(v00, v11, v01);
+      indices.push(v00, v11, v10);
+      indices.push(v00, v01, v11);
     }
   }
 
