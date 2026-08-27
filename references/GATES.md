@@ -343,6 +343,10 @@ byte-identical.
 penetration depth and NEVER repositions geometry (same discipline as `checkGeometry`'s advisory
 candidates, and as the spatial compiler in `references/spatial-world-model.md`).
 
+- **`clash-detect` is a NODE-side gate/build tool — NEVER vendored into the offline browser dist.** It
+  requires three-mesh-bvh and runs headless in Node (Rule 5 headless-gate); the offline single-file browser
+  dist ships RENDER code only. Same for any harness pulling a Node-only dependency (see LIBRARY.md
+  §Validating a library module).
 - **HARD-FAIL on real interior penetration only.** The pass rule is `intersects && depth > tolerance`,
   never the boolean alone — a coplanar face touch (a welded port) is legal CONTACT, not a clash. Reuse
   `geom-verify`'s `gap3D` vocabulary: `clear | touching` (weld, allowed) `| overlapping` (interior
@@ -367,6 +371,9 @@ candidates, and as the spatial compiler in `references/spatial-world-model.md`).
 
 Mirroring "a critical feature below threshold FAILS the pass even with a high global score" (§Verdict),
 these COUNTABLE mechanical zeros cap the asset's Spatial-Intelligence score at **0.79** (7.9/10)
+— **Spatial-Intelligence is a NEW proposed review category** scoring the geometry-correctness dimension the
+visual gate cannot see (collisions/clearances/coords/connectivity); it sits ALONGSIDE the existing per-pass
+quality score / `global_min`, it does not replace them —
 regardless of visual quality — a pipe through an AHU cannot score ≥ 0.8 no matter how it renders:
 `CriticalClashes = 0`, `DisconnectedPipes = 0`, `InvalidGeometry = 0`, `OutOfBounds = 0`. The critical
 sub-scores — Geometry, Connectivity, Collision, Spatial — must EACH be ≥ 0.8 (a weak one is never
@@ -417,7 +424,7 @@ ship non-watertight or inside-out geometry with no record. Wire them into a `mec
 flipped-winding mesh the visual gate misses); **openEdges / non-manifold = REPORT + threshold** against a
 declared expectation (a cut duct end legitimately has open edges — gate on the declared expectation, not
 absolute closure). TEST jurisdiction. Small pure-JS extensions to `geom-verify.mjs` complete the doc's
-10 % Topology rubric component as an objective 0–1 score: `triangleQuality()` (sliver/degenerate),
+10 % Topology rubric component as an objective 0–10 score (`topologyReport()` → `{score:0..10, hardFail, flags}`; hardFail = insideOut/degenerate/bowtie/localFlip, deductions = sliver/openEdges/non-manifold): `triangleQuality()` (sliver/degenerate),
 `normalConsistency()` (partial flips `signedVolume`'s global sign misses), `nonManifoldVertex()` (bowtie
 fans), `fScore(a,b,τ)` (precision/recall at τ). Zero new deps.
 

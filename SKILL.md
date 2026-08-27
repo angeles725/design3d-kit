@@ -55,7 +55,11 @@ source of truth — never improvise phases, gates, or track rules from memory.
    CODE repo does NOT license the generated mesh OUTPUT; "no rights claimed" is NOT a CC0/CC-BY
    grant; several carry extra terms (Hunyuan3D EU/UK/Korea territorial exclusions; Rodin free-trial
    output license unknown). Only Poly Haven (CC0) is a clean auto-source; Sketchfab is per-model
-   manual license capture. Full spec:
+   manual license capture. The block is specifically the NEURAL generators above (trained on
+   unlicensed data). A PROCEDURAL generator (e.g. Infinigen, BSD-3-Clause) is a WEAKER case — its
+   output carries no training-data provenance risk and MAY be used as a tier-C prop with provenance
+   `procedural output, no explicit grant` (`[INFER]`, never `[CERT]`). Do NOT blanket-block a
+   procedural source, and do NOT treat a neural generator as clean. Full spec:
    `disenos/catalog/EXTERNAL-ASSETS.md`.
 9. **Deterministic capture hook**: for reproducible headless QA, every Three.js scene must
    expose a `window.__cam` accessor and honour a `--cam <x,y,z,tx,ty,tz>` flag so captures

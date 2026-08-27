@@ -128,7 +128,7 @@ OWNS coordinates (S2, reserve→commit) carries a THREE-PART, data-backed label:
 > non-null — with a fixed column splitting the room, naive left ~0.75 m of a unit's service clearance
 > eaten while the engine reserved the clearance VOLUME before commit, BOTH still PASS), REQUIRED for
 > CORRECTNESS in the MULTI-AGENT regime (E4 HARD non-null: two blind parallel creadores' primaries
-> collided — naive-parallel merge = 2 overlaps / FAIL, the ReserveEngine-lock run = 6/6 placed / 0 hard /
+> collided — naive-parallel merge = 2 overlaps / score 6.0 / FAIL, the ReserveEngine-lock run = 6/6 placed / 0 hard /
 > 0 soft / 10.0 / PASS — an OBSERVABILITY limit no stronger model reasons away, since blind agents cannot
 > see each other's in-context state).**
 
