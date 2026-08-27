@@ -121,4 +121,36 @@ t("connectPorts rejects an undefined port", () => {
   assert.equal(h.connectPorts("CH-01.out","NOPE.in").success, false);
 });
 
+
+t("placeNextTo anchors relative to a reference with a gap", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"CH",size:[2,2,2],center:[3,3,1]});
+  const r = h.placeNextTo({id:"P",size:[1,1,1]}, "CH", "+x", 0.5);
+  assert.equal(r.success, true);
+  assert.deepEqual(h.getObject("P").center, [5,3,0.5]);
+});
+t("placeNextTo denies a colliding anchor and offers suggestions", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"A",size:[2,2,2],center:[3,3,1]});
+  h.placeEquipment({id:"B",size:[2,2,2],center:[6,3,1]});
+  const r = h.placeNextTo({id:"C",size:[3,3,3]}, "A", "+x", 0);
+  assert.equal(r.success, false); assert.ok(Array.isArray(r.suggestions));
+});
+t("placeAgainstWall flushes to the named wall", () => {
+  const h = new SpatialHarness(room);
+  const r = h.placeAgainstWall({id:"P",size:[2,1,2]}, "north");
+  assert.equal(r.success, true);
+  assert.equal(h.getObject("P").center[1], 7.5);
+});
+t("fromScene rehydrates a validated scene and round-trips toScene", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"A",size:[2,2,2],center:[2,2,1]});
+  h.placeEquipment({id:"B",size:[2,2,2],center:[8,2,1]});
+  const scene = h.toScene();
+  const h2 = SpatialHarness.fromScene(scene);
+  assert.equal(h2.getObjects().length, 2);
+  assert.equal(h2.validateAll().ok, true);
+  assert.deepEqual(h2.toScene(), scene);
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);

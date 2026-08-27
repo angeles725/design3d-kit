@@ -121,6 +121,31 @@ export class SpatialHarness {
     if (c) return { success:false, reason:`blocked by ${c.id} (${c.kind})`, suggestions:this.freeSpace(o.size) };
     o.center = newCenter; return this.snapshot(id);
   }
+  // ---- ANCHORED placement (AI works in RELATIONS; the engine computes XYZ, then GUARDS) ----
+  placeNextTo(spec, refId, side, gap = 0) {
+    const ref = this.obj.get(refId); if (!ref) return { success:false, reason:`no reference ${refId}` };
+    const R = this.#phys(ref); const [sx,sy,sz] = spec.size; const c = [...ref.center];
+    switch (side) {
+      case '+x': c[0] = R.hi[0] + gap + sx/2; c[1] = ref.center[1]; break;
+      case '-x': c[0] = R.lo[0] - gap - sx/2; c[1] = ref.center[1]; break;
+      case '+y': c[1] = R.hi[1] + gap + sy/2; c[0] = ref.center[0]; break;
+      case '-y': c[1] = R.lo[1] - gap - sy/2; c[0] = ref.center[0]; break;
+      default: return { success:false, reason:`bad side ${side} (use +x/-x/+y/-y)` };
+    }
+    c[2] = sz/2; // rest on the floor
+    return this.placeEquipment({ ...spec, center: c }); // delegate to the guarded placer
+  }
+  placeAgainstWall(spec, wall, offset = 0) {
+    const [sx,sy,sz] = spec.size; const [X,Y] = this.room; const c = [X/2, Y/2, sz/2];
+    switch (wall) {
+      case 'north': c[1] = Y - sy/2 - offset; break; // +y face
+      case 'south': c[1] = sy/2 + offset; break;     // -y face
+      case 'east':  c[0] = X - sx/2 - offset; break; // +x face
+      case 'west':  c[0] = sx/2 + offset; break;     // -x face
+      default: return { success:false, reason:`bad wall ${wall} (use north/south/east/west)` };
+    }
+    return this.placeEquipment({ ...spec, center: c });
+  }
   // ---- VALIDATE tool ----
   validateAll() {
     const v = []; const ids = [...this.obj.keys()];
@@ -144,4 +169,10 @@ export class SpatialHarness {
   }
   // export the scene in the shared verify.mjs schema
   toScene() { return { room: { size: this.room }, objects: [...this.obj.values()].map(o => ({ id:o.id, size:o.size, center:o.center, ...(o.clearance?{clearance:o.clearance}:{}), ...(o.ports?{ports:o.ports}:{}) })) }; }
+  // ---- LOAD an already-validated scene (inverse of toScene; loads committed state, does not re-place) ----
+  static fromScene(scene, opts = {}) {
+    const h = new SpatialHarness(scene.room, opts);
+    for (const o of (scene.objects || [])) h.obj.set(o.id, { id:o.id, type:o.type, size:o.size, center:o.center, clearance:o.clearance, ports:o.ports });
+    return h;
+  }
 }
