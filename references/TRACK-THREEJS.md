@@ -52,6 +52,16 @@ Found overlays OVERRIDE the generic defaults below.
     (d) an R3F component CANNOT preview as a Claude artifact (the artifact CSP blocks esm.sh and R3F is
     not in the sandbox) — ship a browser-only esm.sh + Babel HTML preview, not an artifact.
   Provenance: `disenos/COB-IM2/runs/2026-08-21-architecture-retro.md` + `-r3f-phase2-retro.md`.
+- **`renderOrder` on a Group INVERTS multi-pass ordering — never use it to sequence against scene
+  objects.** `renderOrder` set on a `THREE.Group` becomes the `groupOrder` of its ENTIRE subtree, and
+  `painterSortStable` compares `groupOrder` BEFORE `renderOrder`. So a child with a high `renderOrder`
+  inside a low-`groupOrder` Group still draws BEFORE a scene-level object at a higher `groupOrder` — the
+  intended order is reversed. To sequence a multi-pass effect (stencil count → cover, depth pre-pass,
+  etc.), put `renderOrder` PER-OBJECT with every participant at the SAME nesting depth (one `groupOrder`),
+  never on a wrapping Group. The failure is TOTALLY SILENT — no warning, no error; the symptom is the
+  effect being invisible (Revisor COB-IM2 WU-L4-B1: stencil-count passes in Groups groupOrder 1/3/5, cap
+  quads as scene children groupOrder 0 → caps drew first against a just-cleared stencil, discarding
+  everything; the count wrote a buffer nobody read).
 - **Voxel/blockout pass**: all static voxels in ONE `InstancedMesh` per color (shared
   `BoxGeometry(1,1,1)`, `setMatrixAt` + `instanceMatrix.needsUpdate = true`). Animated parts
   (fans, dampers, couplings) in SEPARATE `Group`s outside the InstancedMesh. Flat-color

@@ -103,6 +103,17 @@ review is the ONLY acceptance authority — never pixel-diff or heuristic auto-a
      when one exists** (a real cap face over a stencil cap), because geometry IS verifiable by the
      gates already in the kit. (Revisor COB-IM2 WU-L4-B1, 2026-08-27: system-3d stencil caps for the
      see-through duct ends — a render-only technique — could not be gated; a geometric cap can.)
+   - **"Prefer geometric" applies when the TECHNIQUE is the obstacle — NOT to escape a
+     technique-independent code bug.** The (b) rule above is about gate-verifiability, not a blanket
+     "always switch away from stencil". If a render-only failure reproduces IDENTICALLY across renderers
+     (GPU == SwiftShader, pixel-for-pixel), it is a CODE bug, not renderer/technique fragility, and
+     switching techniques drags the SAME bug into the new one UNFOUND — diagnose it in place first. And a
+     stencil/render-only technique CAN be made gateable with the debug-mode/readback rule (a) asks for:
+     Revisor's `?capdebug` (paint the caps + a before/after pixel diff) made the stencil verifiable in
+     practice and WU-L4-B1 PASSED. (COB-IM2 WU-L4-B1: the stencil no-op was a `renderOrder`-on-Group
+     render-order inversion, technique-independent; staying in stencil + fixing the order bug + adding
+     `?capdebug` was correct — a geometry switch would have carried the order bug in unfound. See
+     TRACK-THREEJS §renderOrder-on-Group.)
    - **To verify a RENDER-only change did something, DIFF before/after on the SAME renderer.** Do not
      interpret pixels or trust a pre-look — capture pre-change and post-change at the SAME camera on the
      SAME renderer and compare: **byte-identical (AE=0) proves a NO-OP**, regardless of how either frame
