@@ -11,6 +11,10 @@
 //       the small tilt each corner gains.
 // deps: NONE. Waypoint arithmetic only — Node-testable with no three.js resolution.
 //
+// PLAYBOOK: run applyDrainageSlope on the router waypoints BEFORE building any sloped run — the raw
+// orthogonal route is monotonic + net-grade but leaves every horizontal run flat (pools). Then gate the
+// built run with drainage-check.checkDrainageSlope so a regression can't silently reintroduce a flat run.
+//
 // MATH. Fall axis a (default y). For each segment: horizLen = distance in the two non-axis coords,
 // runsDrop = minGrade * Σ horizLen over runs. Feasible iff netDrop >= runsDrop (same feasibility the
 // router's net-grade check already enforces). Each horizontal run is assigned drop = minGrade*horizLen
