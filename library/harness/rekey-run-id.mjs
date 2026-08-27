@@ -32,13 +32,17 @@ export function buildNumericRunIdMap(runs) {
 }
 
 const _d3 = (p, q) => Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]);
-// endpoint delta between two runs, orientation-agnostic (p0/p1 may be stored either way): the smaller of the
-// parallel (p0-p0,p1-p1) and swapped (p0-p1,p1-p0) max-endpoint distance, plus a length delta.
+// a run's two endpoints, from EITHER the vectorizer shape {a,b} (inv3's runs) OR {p0,p1} — so the validator
+// speaks the real run shape without the caller re-mapping. null when neither pair is present.
+const _ends = (r) => (r?.p0 && r?.p1) ? [r.p0, r.p1] : (r?.a && r?.b ? [r.a, r.b] : null);
+// endpoint delta between two runs, orientation-agnostic (endpoints may be stored either way): the smaller of
+// the parallel (0-0,1-1) and swapped (0-1,1-0) max-endpoint distance, plus a length delta.
 function _endpointDelta(a, b) {
-  const parallel = Math.max(_d3(a.p0, b.p0), _d3(a.p1, b.p1));
-  const swapped  = Math.max(_d3(a.p0, b.p1), _d3(a.p1, b.p0));
+  const [a0, a1] = _ends(a), [b0, b1] = _ends(b);
+  const parallel = Math.max(_d3(a0, b0), _d3(a1, b1));
+  const swapped  = Math.max(_d3(a0, b1), _d3(a1, b0));
   const maxPos = Math.min(parallel, swapped);
-  const lenA = a.L ?? _d3(a.p0, a.p1), lenB = b.L ?? _d3(b.p0, b.p1);
+  const lenA = a.L ?? _d3(a0, a1), lenB = b.L ?? _d3(b0, b1);
   return { maxPos: Number(maxPos.toFixed(4)), lenDelta: Number(Math.abs(lenA - lenB).toFixed(4)) };
 }
 
@@ -63,8 +67,8 @@ function _endpointDelta(a, b) {
  * different producers (compose is not a naming problem); 'partial' = the sets OVERLAP but DIVERGE — a 1:1
  * compose is FALSE exactly on the runs that matter, and the ONLY outcome where the gate can look healthy and
  * not be. Treat 'partial' as the alarm, not just `ok:false`.
- * @param {Array<{id:string,p0:number[],p1:number[],L?:number}>} runsA  one extraction (e.g. inv3 vectorizer)
- * @param {Array<{id:string,p0:number[],p1:number[],L?:number}>} runsB  the other (e.g. DATA.runs), same frame
+ * @param {Array<{id:string,a?:number[],b?:number[],p0?:number[],p1?:number[],L?:number}>} runsA  one extraction (inv3 vectorizer runs use {a,b}; {p0,p1} also accepted)
+ * @param {Array<{id:string,a?:number[],b?:number[],p0?:number[],p1?:number[],L?:number}>} runsB  the other (e.g. DATA.runs), same frame
  * @param {{posTol?:number, sample?:string[], key?:string}} [opts]  posTol metres (default 0.05); optional stratified id subset
  * @returns {{ok:boolean, verdict:'all-match'|'none-match'|'partial'|'none-checked', mismatches:Array<{id:string,maxPos:number,lenDelta:number}>, matched:number, checked:number, shared:number}}
  */
@@ -78,7 +82,7 @@ export function validateRunIdentityByGeometry(runsA, runsB, opts = {}) {
     const b = byIdB.get(String(a[key]));
     if (!b) continue;                                 // not shared — reKey's unmapped[] owns absence, not this
     shared++;
-    if (!a.p0 || !a.p1 || !b.p0 || !b.p1) continue;   // no endpoints to compare — skip (nothing asserted)
+    if (!_ends(a) || !_ends(b)) continue;             // no endpoints to compare — skip (nothing asserted)
     checked++;
     const d = _endpointDelta(a, b);
     if (d.maxPos > posTol) mismatches.push({ id: a[key], ...d });
