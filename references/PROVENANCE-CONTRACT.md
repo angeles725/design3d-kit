@@ -37,12 +37,18 @@ the same run — so provenance is carried **per measured quantity**, as an **env
 provenance travel together, never as parallel arrays a stage could desync). Shape credited to inv2's
 strawman, refined here and RATIFIED — wire this verbatim:
 
+The envelopes live under **one fixed container key — `obj.fieldProvenance`** — keyed by quantity name
+(RATIFIED: all lanes emit and read this exact key; do not inline the envelopes on the object or invent
+`obj.provenance`/`obj.prov`):
+
 ```js
-// each measured quantity is an envelope, threaded unchanged entry→voxelize→realista→viewer:
-width:     { v: 0.1016, prov: 'measured', raw: 0.0825, snap: 'imperial-4in', deltaMm: 19.1 }
-height:    { v: null,   prov: 'absent-in-source' }   // P3: h=None is a FACT; v is null iff absent
-bod:       { v: 3.20,   prov: 'measured' }           // P3 fact A: vertical POSITION (~99% known)
-topExtent: { v: null,   prov: 'absent-in-source' }   // P3 fact B: superior EXTENSION (often unknown)
+obj.fieldProvenance = {
+  // each measured quantity is an envelope, threaded unchanged entry→voxelize→realista→viewer:
+  width:     { v: 0.1016, prov: 'measured', raw: 0.0825, snap: 'imperial-4in', deltaMm: 19.1 },
+  height:    { v: null,   prov: 'absent-in-source' },  // P3: h=None is a FACT; v is null iff absent
+  bod:       { v: 3.20,   prov: 'measured' },          // P3 fact A: vertical POSITION (~99% known)
+  topExtent: { v: null,   prov: 'absent-in-source' },  // P3 fact B: superior EXTENSION (often unknown)
+}
 ```
 
 - **`prov` domain (closed set):** `'measured' | 'inferred' | 'absent-in-source'`. Maps 1:1 to the
