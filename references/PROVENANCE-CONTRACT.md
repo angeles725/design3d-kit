@@ -121,19 +121,31 @@ flag  = divergenceMm ≥ snapDivergenceGateMm
   **valley of the `|raw − snapped|` histogram over ALL runs**: a healthy cluster (≤ ~5 mm, tracing noise)
   and a wrong-pair tail (~15–20 mm; the COB-IM2 state-of-record has ~25 runs off by up to ~20 mm). Set the
   gate at the trough between the two modes.
-- **Chicken-and-egg:** the histogram can't be built until P4 exposes `raw`. So: **`snapDivergenceGateMm = 10 mm`
-  PROVISIONAL now** (it separates the two known points — 19.1 mm RED, 3.4 mm healthy — and ≈ half the 4″
-  ladder half-step); once the exterior-pair + `raw` fix (inv3/inv2) lands on certified data, Revisor
-  histograms `|raw − snapped|` and returns the measured valley to fix the definitive threshold.
-- The spine owns the gate wire (fail-loud / advisory per policy) and reads `snapDivergenceGateMm` as a
-  one-line **config**, not a hardcoded constant, so swapping provisional→measured is a value change only.
-  Intake just emits `raw`+`deltaMm`.
+- **MEASURED value: `snapDivergenceGateMm = 9 mm`** (Revisor, 2026-08-27, histogram of `|w − w_raw|` over
+  **2033 certified COB-IM2 L4 runs**): p50=3.4, p75=10, p90=16, p95=19.1, p99=23.3, max=24.9 mm. Healthy
+  cluster ≤4 mm = 1195 runs (59%); local-minimum **VALLEY at 8–10 mm = 48 runs**; tail 10–26 mm = 508 runs
+  (25%). The valley floor is **9 mm** — the measured gate. (The earlier `10 mm` provisional sat at the
+  valley's upper edge — acceptable, but 9 mm is the measured minimum.)
+- **The flag marks REVIEW CANDIDATES, not confirmed errors.** A large `|w − w_raw|` is not only a
+  wrong-pair (interior-vs-exterior) extraction — a duct legitimately traced BETWEEN nominals (off-nominal
+  run) also diverges. So a flagged run is a *candidate for review*, and the default policy stays `warn`
+  (surface), never `block`. The tail (508 runs) is far larger than the state-of-record "~25 wrong-pair"
+  precisely because it mixes wrong-pair AND legit off-nominal, which the old interior-pair extractor cannot
+  separate.
+- **Definitive value pending a re-histogram with the exterior-pair fix.** Decisive test (Revisor):
+  apply inv3's exterior-pair selection (#72) to the *source* extractor and re-histogram — if the tail
+  collapses to <5 mm those runs were wrong-pair; whatever remains is legit off-nominal. Until then, **use
+  9 mm labeled "candidates"**; the definitive number is confirmed after that re-histogram.
+- The spine owns the gate wire and reads `snapDivergenceGateMm` as a one-line **config** (default now
+  **9**), not a hardcoded constant, so a definitive-value swap is a one-line change. Intake emits `raw`+`deltaMm`.
 
 ### `fieldProvenance.width` ownership — ONE writer, no clobber (RATIFIED inv3+inv4)
 
 Two sources can measure width — a WxH **label** (cota-binding, inv4) and the parallel **flank** line-work
-(duct-vectorize, inv3). To prevent two modules writing the same envelope, the **flank step (inv3) is the
-SINGLE writer** of `fieldProvenance.width`, downstream of cota-binding, via `mergeWidthProvenance`:
+(duct-vectorize, inv3). To prevent two modules writing the same envelope, cota-binding emits the label
+width under a **distinct key `labelWidth`** (NOT `width`), and the **flank step (inv3) is the SINGLE
+writer** of `fieldProvenance.width`, composing it from `labelWidth` + the flank measurement via
+`mergeWidthProvenance`:
 
 - **label-only run:** pass the label width through unchanged — `v = label`, `prov: 'measured'`.
 - **flank-only run:** overwrite the label's `absent-in-source` with the flank measurement — `prov: 'measured'`.
