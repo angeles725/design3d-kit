@@ -13,17 +13,25 @@ Lane: AI asset generation / Blender automation. Verified against real source + l
 - **Hyper3D Rodin** = hosted SaaS (hyper3d.ai), no open repo. Output license tier-dependent; **free-trial output license unknown/unconfirmed.**
 - **Poly Haven** = CC0 (clean). **Sketchfab** = per-model licenses (CC0..CC-BY-NC-ND + Standard); blender-mcp
   prints license in SEARCH preview but does NOT persist/attach it on download.
+- **TRELLIS** = `microsoft/TRELLIS` (13.5k★, MIT CODE, active 2026-06; doc's "~13.4k" accurate) and
+  `microsoft/TRELLIS.2` (10.8k★, active 2026-07 — CONFIRMED to exist; the doc's O-Voxel/<100ms claims are
+  TRELLIS.2's and not re-verified in detail). **CRITICAL: the repo specifies NO license/terms for the 3D mesh
+  OUTPUT it generates** ("lacks explicit guidance on output asset licensing", ambiguous for commercial use).
+  MIT covers the CODE, not the generated asset.
 
 ## DELTAS
 
 ### A1 — CRITICAL license correction (the document is WRONG here vs our kit)  [ADOPT — high priority]
-AI-generated meshes (Hunyuan3D / Rodin) do **NOT** satisfy `SKILL.md` Hard Rule 8
+AI-generated meshes (Hunyuan3D / Rodin / **TRELLIS**) do **NOT** satisfy `SKILL.md` Hard Rule 8
 ("never use an asset whose license is unknown or more restrictive than CC-BY; license recorded before first use").
 - Rodin free-trial output = UNKNOWN license → violates Rule 8.
 - Hunyuan3D output = "no rights claimed" is not a recordable CC0/CC-BY string → violates the LETTER of Rule 8.
-- Recommendation: explicitly document Hunyuan3D/Rodin as **BLOCKED from the external-mesh [CERT]/gate track**
-  (tier-C throwaway/visual props only; never a [CERT] subject; never license-gate-passing), OR a documented
-  exception path requiring recorded terms + a clean (non-copyrighted) input image.
+- TRELLIS output = license UNSPECIFIED. TRAP: MIT CODE does NOT make the OUTPUT MIT — a user assuming
+  "MIT repo ⇒ free assets" would violate Rule 8 unknowingly. Same verdict as Hunyuan3D/Rodin.
+- Recommendation: explicitly document Hunyuan3D/Rodin/TRELLIS as **BLOCKED from the external-mesh [CERT]/gate
+  track** (tier-C throwaway/visual props only; never a [CERT] subject; never license-gate-passing), OR a
+  documented exception path requiring recorded terms + a clean (non-copyrighted) input image. State the
+  MIT-code-≠-licensed-output trap explicitly so it isn't rediscovered the hard way.
 - Paths: `SKILL.md` Hard Rule 8 + `disenos/catalog/EXTERNAL-ASSETS.md`.
 
 ### A2 — Three-tier geometry sourcing made explicit  [ADOPT]
