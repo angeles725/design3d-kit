@@ -38,6 +38,18 @@ const expand = (box, cl = {}) => {
 };
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const load = (p) => JSON.parse(readFileSync(p, 'utf8'));
+// segment p0->p1 vs AABB box (slab method, t in [0,1]) -> true if they intersect
+const segAABB = (p0, p1, box) => {
+  let t0 = 0, t1 = 1;
+  for (let i = 0; i < 3; i++) {
+    const d = p1[i] - p0[i];
+    if (Math.abs(d) < 1e-12) { if (p0[i] < box.lo[i] - EPS || p0[i] > box.hi[i] + EPS) return false; }
+    else { let ta = (box.lo[i] - p0[i]) / d, tb = (box.hi[i] - p0[i]) / d;
+      if (ta > tb) { const t = ta; ta = tb; tb = t; }
+      t0 = Math.max(t0, ta); t1 = Math.min(t1, tb); if (t0 > t1) return false; }
+  }
+  return true;
+};
 
 // ---------- E2 diff mode (proxy -> realistic invariant) ----------
 function diffMode(beforePath, afterPath) {
@@ -113,6 +125,26 @@ function scoreMode(scenePath) {
     const ok1 = b && pl.length && dist(pl[pl.length - 1], b) <= TOL;
     if (ok0 && ok1) connected++;
     else V.push({ sev: 'HARD', kind: 'disconnect', msg: `pipe ${p.id}: from-ok=${!!ok0} to-ok=${!!ok1}` });
+  }
+  // 6b. pipe-vs-solid (folded from inv2 hvac-pipe-checks): RULE001 pipe-through-equipment (HARD),
+  //     RULE007 pipe-in-foreign-clearance (SOFT), RULE006 missing DN (SOFT/schema).
+  //     A pipe legitimately enters its OWN connected equipment (from/to) -> those objects are skipped.
+  for (const p of pipes) {
+    const pl = p.polyline ?? [];
+    const ends = [String(p.from ?? '').split('.')[0], String(p.to ?? '').split('.')[0]];
+    if (p.dn === undefined || p.dn === null) V.push({ sev: 'SOFT', kind: 'no-DN', msg: `pipe ${p.id} has no DN` });
+    for (const o of objs) {
+      if (ends.includes(o.id)) continue;
+      const body = aabb(o);
+      let through = false;
+      for (let s = 0; s < pl.length - 1; s++) if (segAABB(pl[s], pl[s + 1], body)) { through = true; break; }
+      if (through) { V.push({ sev: 'HARD', kind: 'pipe-through-equipment', msg: `pipe ${p.id} passes through ${o.id}` }); continue; }
+      if (o.clearance) {
+        const ex = expand(body, o.clearance);
+        for (let s = 0; s < pl.length - 1; s++)
+          if (segAABB(pl[s], pl[s + 1], ex)) { V.push({ sev: 'SOFT', kind: 'pipe-in-foreign-clearance', msg: `pipe ${p.id} enters ${o.id} clearance` }); break; }
+      }
+    }
   }
   // 6. origin clustering (diagnostic)
   const clustered = objs.filter(o => dist(o.center, [0, 0, 0]) <= ORIGIN_R).map(o => o.id);
