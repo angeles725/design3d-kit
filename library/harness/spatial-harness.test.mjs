@@ -233,4 +233,33 @@ t("pathFree/freeSpace delegate to an injected accel when a grid is provided (opt
   assert.equal(calls[1][0], "findFreeRegion");
 });
 
+t('bearingTo gives frame-aware cardinal + azimuth + range (relative sense, not raw XYZ)', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id: 'A', size: [1,1,1], center: [2, 2, 0.5] });
+  h.placeEquipment({ id: 'N', size: [1,1,1], center: [2, 6, 0.5] }); // +y = north
+  h.placeEquipment({ id: 'E', size: [1,1,1], center: [6, 2, 0.5] }); // +x = east
+  const bn = h.bearingTo('A', 'N');
+  assert.equal(bn.cardinal, 'north'); assert.equal(bn.azimuthDeg, 90); assert.equal(bn.distance, 4);
+  assert.deepEqual(bn.unit, [0, 1, 0]);
+  const be = h.bearingTo('A', 'E');
+  assert.equal(be.cardinal, 'east'); assert.equal(be.azimuthDeg, 0); assert.equal(be.distance, 4);
+});
+
+t('bearingTo returns null for unknown id or coincident centers', () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({ id: 'A', size: [1,1,1], center: [2, 2, 0.5] });
+  assert.equal(h.bearingTo('A', 'ghost'), null);
+  assert.equal(h.bearingTo('A', 'A'), null); // zero-length bearing → null
+});
+
+t('snapshot carries nearestBearing when a neighbor exists, null when alone', () => {
+  const h = new SpatialHarness(room);
+  const solo = h.placeEquipment({ id: 'A', size: [1,1,1], center: [2, 2, 0.5] });
+  assert.equal(solo.nearestBearing, null); // first object has no neighbor
+  // B at y=5, its nearest is A at y=2 → A lies SOUTH of B, 3 m away
+  const r = h.placeEquipment({ id: 'B', size: [1,1,1], center: [2, 5, 0.5] });
+  assert.equal(r.nearby.id, 'A');
+  assert.equal(r.nearestBearing.cardinal, 'south'); assert.equal(r.nearestBearing.distance, 3);
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);

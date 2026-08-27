@@ -14,6 +14,18 @@ const grow = (b, cl = {}) => { const lo=[...b.lo], hi=[...b.hi];
   const m={'+x':[0,hi],'-x':[0,lo],'+y':[1,hi],'-y':[1,lo],'+z':[2,hi],'-z':[2,lo]};
   for (const [k,v] of Object.entries(cl)) { const e=m[k]; if(!e) continue; if(e[1]===hi) hi[e[0]]+=v; else lo[e[0]]-=v; } return {lo,hi}; };
 const dist = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+// cardinal label for a world direction under the default frame (x=east, y=north, z=up) — dominant axis wins,
+// z only when it dominates both planar axes. Lets a tool answer "B is NORTH of A" instead of raw XYZ.
+const cardinalOf = (v) => { const ax=Math.abs(v[0]), ay=Math.abs(v[1]), az=Math.abs(v[2]);
+  if (az > ax && az > ay) return v[2] >= 0 ? 'up' : 'down';
+  if (ax >= ay) return v[0] >= 0 ? 'east' : 'west'; return v[1] >= 0 ? 'north' : 'south'; };
+// bearing from point a→b: unit direction + frame-aware cardinal + planar azimuth (deg, CCW from +x/east) + range.
+// null for a zero-length bearing (coincident points). The AI reasons RELATIVE ("north, 3.2 m") — inv.md §5 /
+// inv3 §21 spatial-state: never eyeball absolute coordinates.
+const bearing = (a, b) => { const d=[b[0]-a[0], b[1]-a[1], b[2]-a[2]], len=Math.hypot(d[0],d[1],d[2]);
+  if (len < EPS) return null;
+  return { unit: d.map(v => Number((v/len).toFixed(4))), cardinal: cardinalOf(d),
+           azimuthDeg: Number((Math.atan2(d[1], d[0]) * 180/Math.PI).toFixed(1)), distance: Number(len.toFixed(3)) }; };
 // slab-clip: does segment p→q touch AABB box (optionally Minkowski-inflated by the caller)?
 const segHitsBox = (p, q, box) => {
   let t0 = 0, t1 = 1; const d = [q[0]-p[0], q[1]-p[1], q[2]-p[2]];
@@ -56,6 +68,9 @@ export class SpatialHarness {
   nearest(id, type) { const o = this.obj.get(id); if(!o) return null; let best=null, bd=Infinity;
     for (const [k,v] of this.obj) { if (k===id || (type && v.type!==type)) continue;
       const d = dist(o.center, v.center); if (d<bd){bd=d; best={id:k, distance:Number(d.toFixed(3))};} } return best; }
+  // relative bearing A→B (unit dir + cardinal + azimuth + range) so the AI can say "B is NORTH of A, 3.2 m"
+  // instead of comparing raw XYZ. null if either id is unknown or the centers coincide.
+  bearingTo(a, b) { const A=this.obj.get(a), B=this.obj.get(b); return (A&&B) ? bearing(A.center, B.center) : null; }
   // exact O(objects) scan by default; opt-in {grid,accel} delegates to occupancy-accel.findFreeRegion (O(cells)) for large scenes
   freeSpace(size, opts = {}) {
     const { step = 0.5, grid = null, accel = null, near = null } = opts;
@@ -180,6 +195,8 @@ export class SpatialHarness {
     const mine = this.validateAll().violations.filter(x => x.a===id || x.b===id);
     this.lastOp = { id, center: o.center }; // propioception update
     return { success: true, id, center: o.center, nearby: n,
+             // relative sense to the nearest object so the AI orients ("north, 3.2 m") without raw-XYZ math
+             nearestBearing: n ? bearing(o.center, this.obj.get(n.id).center) : null,
              collisions: mine.filter(x => x.rule==='001').length,          // hard (illegal)
              clearanceWarnings: mine.filter(x => x.rule==='007').length,   // soft (quality)
              count: this.obj.size };
