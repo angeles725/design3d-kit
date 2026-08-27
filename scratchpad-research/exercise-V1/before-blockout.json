@@ -1,0 +1,8 @@
+{ "room": {"size":[14,10,4]},
+  "objects": [
+    {"id":"CH-01","type":"chiller","size":[3.0,1.2,1.8],"center":[3.5,8.0,0.9],"clearance":{"-y":1.2},"ports":{"CHWS_out":[1.5,-0.6,0.5],"CHWR_in":[1.5,0.6,0.5]}},
+    {"id":"CH-02","type":"chiller","size":[3.0,1.2,1.8],"center":[8.5,8.0,0.9],"clearance":{"-y":1.2},"ports":{"CHWS_out":[1.5,-0.6,0.5],"CHWR_in":[1.5,0.6,0.5]}},
+    {"id":"P-01","type":"pump","size":[0.8,0.6,0.9],"center":[3.5,5.5,0.45],"ports":{"suction":[-0.4,0,0.1],"discharge":[0.4,0,0.1]}},
+    {"id":"P-02","type":"pump","size":[0.8,0.6,0.9],"center":[5.0,5.5,0.45],"ports":{"suction":[-0.4,0,0.1],"discharge":[0.4,0,0.1]}},
+    {"id":"AHU-01","type":"ahu","size":[2.5,1.5,2.0],"center":[11.5,5.0,1.0],"clearance":{"-x":0.8},"ports":{"CHW_in":[-1.25,0.4,0.5],"CHW_out":[-1.25,-0.4,0.5]}}
+  ] }
