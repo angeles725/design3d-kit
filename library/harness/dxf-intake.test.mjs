@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers } from './dxf-intake.mjs';
+import { readDxf, parsePairs, bulgeToArc, geometryToPolylines, toLineBuffers, isAnnotationLayer } from './dxf-intake.mjs';
 
 // creador1's realistic fixture: tiny 6x4 m HVAC room (INSERT w/ 66=1 + SEQEND, optional per-vertex bulge)
 const DXF = `0
@@ -473,4 +473,40 @@ test('geometryToPolylines samples an ELLIPSE (major 1, minor 0.5)', () => {
   const ell = lines.find(l => l.some(p => Math.abs(p[0] - 3) < 1e-6 && Math.abs(p[1] - 2) < 1e-6)); // t=0 → (2+1,2)
   assert.ok(ell, 'ellipse sampled through its major vertex (3,2)');
   assert.ok(ell.some(p => Math.abs(p[0] - 2) < 1e-6 && Math.abs(p[1] - 2.5) < 1e-6), 'minor vertex (2,2.5)');
+});
+
+// --- annotation-layer exclusion from room extents (regression) -----------------------------------------
+// Real-corpus failure mode (nave-panccadia, AutoCAD-2007): annotation layers (Cotas/EJES/TEXTO/SIMBOLOGÍA/
+// ÁREA) scatter entities across the whole sheet (X=6..608 m). Including them in the room bbox "produces
+// garbage" and corrupts the downstream voxel-grid extents. Only fabric layers may bound the room.
+const seg = (layer, x0, y0, x1, y1) => `0\nLINE\n8\n${layer}\n10\n${x0}\n20\n${y0}\n30\n0.0\n11\n${x1}\n21\n${y1}\n31\n0.0\n`;
+// 6x4 fabric footprint on MUROS (no WALLS layer → tests the fabric fallback path, as a real ES drawing does),
+// plus a grid line on EJES and a note on TEXTO thrown far across the sheet.
+const annoDxf = `0\nSECTION\n2\nENTITIES\n${seg('MUROS', 0, 0, 6, 0)}${seg('MUROS', 6, 0, 6, 4)}${seg('EJES', 300, -70, 608, 589)}${seg('TEXTO', 6, 500, 20, 520)}0\nENDSEC\n0\nEOF\n`;
+
+test('isAnnotationLayer: EN+ES annotation tokens matched, fabric layers untouched, layer 0 not default-excluded', () => {
+  for (const a of ['EJES', 'TEXTO', 'Cotas', 'A-ANNO-TEXT', 'SIMBOLOGÍA', 'ÁREA', 'DIM', 'GRID', 'HATCH', 'DEFPOINTS'])
+    assert.ok(isAnnotationLayer(a), `${a} is annotation`);
+  for (const f of ['MUROS', 'WALLS', 'MURO BAJO', 'COLUMNAS', 'EQUIPOS', 'HVAC', '0'])
+    assert.ok(!isAnnotationLayer(f), `${f} is fabric`);
+  assert.ok(isAnnotationLayer('0', new Set(['0'])), 'layer 0 excluded only when opted in');
+});
+
+test('room extents ignore annotation layers (bbox stays 6x4, not exploded to ~600)', () => {
+  const sg = readDxf(annoDxf);
+  assert.ok(sg.room, 'room derived');
+  assert.ok(Math.abs(sg.room.size[0] - 6) < 1e-9 && Math.abs(sg.room.size[1] - 4) < 1e-9,
+    `room is the fabric 6x4, got ${sg.room.size}`);
+  assert.deepEqual([...sg.room.excludedLayers].sort(), ['EJES', 'TEXTO'], 'annotation layers recorded for audit');
+  // all four entities still parsed into geometry[] — exclusion only scopes the room bbox, not the data.
+  assert.equal(sg.geometry.length, 4);
+});
+
+test('annotationLayers override: a drawing that abuses layer 0 can exclude it', () => {
+  const dxf = `0\nSECTION\n2\nENTITIES\n${seg('MUROS', 0, 0, 6, 0)}${seg('MUROS', 6, 0, 6, 4)}${seg('0', 900, 900, 950, 950)}0\nENDSEC\n0\nEOF\n`;
+  const withZero = readDxf(dxf);                       // layer 0 IS fabric by default → bbox explodes toward 950
+  assert.ok(withZero.room.size[0] > 900, 'layer 0 counted as fabric by default');
+  const excludeZero = readDxf(dxf, { annotationLayers: ['0'] });
+  assert.ok(Math.abs(excludeZero.room.size[0] - 6) < 1e-9, 'layer 0 excluded on request → clean 6x4');
+  assert.deepEqual([...excludeZero.room.excludedLayers], ['0']);
 });

@@ -75,6 +75,24 @@ function entities(pairs) {
 const first = (e, code) => { const p = e.pairs.find(x => x.code === code); return p ? p.value : undefined; };
 const layerOf = (e) => (first(e, 8) || '0').trim();
 
+// Annotation / non-fabric layer tokens (EN + ES). These layers must NOT delimit the physical room extents:
+// including them explodes the bbox. Real evidence (nave-panccadia, an industrial AutoCAD-2007 plan): TEXT/
+// EJES/COTAS were scattered across X=6..608 m, so extruding them as if they were geometry "produces garbage".
+// Only fabric layers (walls, columns, equipment) bound the room. A layer is annotation if ANY of its
+// separator-split tokens is in this set — so "A-ANNO-TEXT", "EJES", "Cotas" all match, while "MURO BAJO" does not.
+// Deliberately NOT here: layer "0" (AutoCAD's default layer routinely holds real geometry) — opt in per-drawing
+// via readDxf(text,{annotationLayers:['0']}) when a specific drawing abuses it.
+const ANNOTATION_TOKENS = new Set([
+  'dim', 'dims', 'dimension', 'dimensions', 'cota', 'cotas', 'text', 'texto', 'textos', 'mtext', 'note', 'notes',
+  'leader', 'grid', 'eje', 'ejes', 'axis', 'hatch', 'symbol', 'symbols', 'simbologia', 'simbología', 'area', 'área',
+  'title', 'titleblock', 'leyenda', 'legend', 'annot', 'annotation', 'anno', 'defpoints', 'tag', 'tags',
+]);
+export function isAnnotationLayer(layer, extra) {
+  const name = String(layer).trim();
+  if (extra && extra.has(name.toUpperCase())) return true;              // per-drawing overrides (e.g. '0')
+  return name.toLowerCase().split(/[-_ /]+/).filter(Boolean).some(t => ANNOTATION_TOKENS.has(t));
+}
+
 // world points of a block-definition entity (for the block's footprint bbox)
 function collectPoints(e) {
   const pts = [];
@@ -101,7 +119,7 @@ function bboxSize(pts) {
   return [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
 }
 
-export function readDxf(text, { units = 'm' } = {}) {
+export function readDxf(text, { units = 'm', annotationLayers = [] } = {}) {
   const src = (e) => ({ layer: layerOf(e), entity: e.type, units, scale: 1 });
   const objects = [], geometry = [], schedule = [], dimensions = [];
   let pendingInsert = null; // INSERT awaiting its ATTRIBs until SEQEND
@@ -196,13 +214,19 @@ export function readDxf(text, { units = 'm' } = {}) {
     if (g.kind === 'ellipse') { const [x, y, z] = g.center, m = Math.hypot(g.majorEnd[0], g.majorEnd[1]); return [[x - m, y - m, z], [x + m, y + m, z]]; }
     return [];
   };
-  const wall = geometry.filter(g => g.layer.toUpperCase() === 'WALLS' && (g.points || g.kind === 'circle' || g.kind === 'ellipse'));
-  const pool = (wall.length ? wall : geometry).flatMap(ptsOf);
+  // Only FABRIC layers may bound the room — annotation layers (cotas/text/grid/…) scatter across the sheet
+  // and would explode the bbox, corrupting the downstream voxel-grid extents. See ANNOTATION_TOKENS above.
+  const extra = new Set(annotationLayers.map(s => String(s).toUpperCase()));
+  const fabric = geometry.filter(g => !isAnnotationLayer(g.layer, extra));
+  const wall = fabric.filter(g => g.layer.toUpperCase() === 'WALLS' && (g.points || g.kind === 'circle' || g.kind === 'ellipse'));
+  const pool = (wall.length ? wall : fabric).flatMap(ptsOf);
   let room = null;
   if (pool.length) {
     const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
     for (const p of pool) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], p[i]); mx[i] = Math.max(mx[i], p[i]); }
-    room = { size: [mx[0] - mn[0], mx[1] - mn[1], Math.max(0, mx[2] - mn[2])], origin: mn };
+    // excludedLayers keeps the room bbox auditable back to the drawing (which layers were treated as annotation).
+    const excludedLayers = [...new Set(geometry.filter(g => isAnnotationLayer(g.layer, extra)).map(g => g.layer))];
+    room = { size: [mx[0] - mn[0], mx[1] - mn[1], Math.max(0, mx[2] - mn[2])], origin: mn, excludedLayers };
   }
 
   return { room, objects, geometry, schedule, dimensions, units, provenance: { route: 1, source: 'dxf' } };
