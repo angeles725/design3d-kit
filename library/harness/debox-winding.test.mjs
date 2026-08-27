@@ -42,3 +42,54 @@ test('deterministic', () => {
   const parts = [{ id: 'P1', positions: CUBE, index: OUT }];
   assert.equal(JSON.stringify(checkDeBoxWinding(parts)), JSON.stringify(checkDeBoxWinding(parts)));
 });
+
+// CURVED-geometry gate power (i2 review): the merged tests only cover CUBES; a lathe/revolved tank is
+// the class where winding actually matters. This proves checkDeBoxWinding DISCRIMINATES orientation on a
+// closed CURVED mesh — OFFLINE, no three (a UV-sphere = a revolved semicircle profile, the lathe class).
+function uvSphere(r, stacks = 12, slices = 16) {
+  const positions = [], index = [];
+  for (let i = 0; i <= stacks; i++) {
+    const phi = (Math.PI * i) / stacks;
+    for (let j = 0; j <= slices; j++) {
+      const th = (2 * Math.PI * j) / slices;
+      positions.push(r * Math.sin(phi) * Math.cos(th), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(th));
+    }
+  }
+  const w = slices + 1;
+  for (let i = 0; i < stacks; i++) for (let j = 0; j < slices; j++) {
+    const a = i * w + j, b = a + 1, c = a + w, d = c + 1;
+    index.push(a, c, b, b, c, d); // one consistent winding
+  }
+  return { positions, index };
+}
+const reverse = (idx) => { const r = []; for (let i = 0; i < idx.length; i += 3) r.push(idx[i], idx[i + 2], idx[i + 1]); return r; };
+
+test('CURVED (revolved/sphere) mesh: gate discriminates winding offline — one orientation PASSES, reverse FAILS', () => {
+  const s = uvSphere(1);
+  const a = checkDeBoxWinding([{ id: 'tank', positions: s.positions, index: s.index }]);
+  const b = checkDeBoxWinding([{ id: 'tank', positions: s.positions, index: reverse(s.index) }]);
+  // exactly one orientation is outward (ok), the other inside-out — the gate's discriminating power on curved geometry
+  assert.notEqual(a.ok, b.ok, 'the gate must separate outward vs inside-out on a curved revolved mesh');
+  const failing = a.ok ? b : a;
+  assert.equal(failing.insideOut.length, 1);
+  assert.ok(failing.insideOut[0].signedVolume < 0);
+});
+
+// signed volume via the divergence theorem (same method as geom-verify.signedVolume) — inlined so this
+// curved-geometry proof stays a pure offline test with no extra import.
+const signedVol = (p, ix) => {
+  let v = 0;
+  for (let i = 0; i < ix.length; i += 3) {
+    const a = ix[i] * 3, b = ix[i + 1] * 3, c = ix[i + 2] * 3;
+    v += p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1])
+       - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c])
+       + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
+  }
+  return v / 6;
+};
+
+test('CURVED mesh signed volume ≈ true enclosed volume (proves it is a real CLOSED vessel, not open)', () => {
+  const s = uvSphere(1, 24, 32);
+  const vol = Math.abs(signedVol(s.positions, s.index));
+  assert.ok(Math.abs(vol - (4 / 3) * Math.PI) < 0.05, `sphere r=1 |V|≈4.19 (got ${vol.toFixed(3)}) — closed, not open`);
+});
