@@ -91,6 +91,26 @@ export class SpatialHarness {
       const d = dist(c, o.center); if (d <= radius + EPS) out.push({ id, distance: Number(d.toFixed(3)) }); }
     return out.sort((a,b) => a.distance - b.distance);
   }
+  // AI WORK BOX / Section Box (inv.md §region-scoping, inv3 §AI-Work-Box, inv4 §spatial-memory): the AI never
+  // gets the whole model — it names a WORKING REGION (a world box {lo,hi}) and asks what's inside. Returns the
+  // objects whose physical AABB INTERSECTS the box, nearest-first by centre-to-box-centre distance.
+  objectsInBox(box) {
+    if (!box?.lo || !box?.hi) return [];
+    const bc = [(box.lo[0]+box.hi[0])/2, (box.lo[1]+box.hi[1])/2, (box.lo[2]+box.hi[2])/2];
+    const out = [];
+    for (const [id, o] of this.obj) if (hit(this.#phys(o), box))
+      out.push({ id, type: o.type, distance: Number(dist(o.center, bc).toFixed(3)) });
+    return out.sort((a,b) => a.distance - b.distance);
+  }
+  // Compact "global map" of a region: counts by type + system so the AI can PICK a working region before
+  // loading its objects (inv.md: global map first, then the region's objects — never dump every object).
+  regionSummary(box) {
+    const inBox = this.objectsInBox(box); const byType = {}, bySystem = {};
+    for (const { id } of inBox) { const o = this.obj.get(id);
+      if (o.type) byType[o.type] = (byType[o.type] || 0) + 1;
+      if (o.system) bySystem[o.system] = (bySystem[o.system] || 0) + 1; }
+    return { count: inBox.length, byType, bySystem };
+  }
   #xyOverlap(A, B) { return Math.min(A.hi[0],B.hi[0])-Math.max(A.lo[0],B.lo[0]) > EPS
                         && Math.min(A.hi[1],B.hi[1])-Math.max(A.lo[1],B.lo[1]) > EPS; }
   whatIsAbove(id) { const o = this.obj.get(id); if (!o) return null; const A = this.#phys(o); let best=null, bz=Infinity;

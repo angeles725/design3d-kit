@@ -295,4 +295,31 @@ t('runFree sweeps the run vs placed objects: clear path free, obstructed path na
   assert.equal(h.runFree([[2,1,1]]).free, true);
 });
 
+t('objectsInBox returns AABB-intersecting objects nearest-first; excludes objects outside the work box', () => {
+  const h = new SpatialHarness({ size: [20, 12, 6] });
+  h.placeEquipment({ id: 'IN-A', type: 'duct', size: [1,1,1], center: [3, 3, 0.5] });
+  h.placeEquipment({ id: 'IN-B', type: 'pipe', size: [1,1,1], center: [5, 3, 0.5] });
+  h.placeEquipment({ id: 'OUT', type: 'duct', size: [1,1,1], center: [16, 9, 0.5] });
+  const box = { lo: [0, 0, 0], hi: [7, 7, 3] };
+  const got = h.objectsInBox(box);
+  assert.deepEqual(got.map(o => o.id), ['IN-A', 'IN-B']); // OUT excluded; nearest-to-box-centre first
+  assert.equal(got[0].type, 'duct');
+  // a partially-overlapping object still counts (AABB intersects the box)
+  h.placeEquipment({ id: 'EDGE', type: 'valve', size: [2,2,1], center: [7.5, 3, 0.5] });
+  assert.ok(h.objectsInBox(box).some(o => o.id === 'EDGE'));
+  assert.deepEqual(h.objectsInBox(undefined), []); // no box -> empty, no throw
+});
+
+t('regionSummary compacts a region to counts by type + system (global-map view, not object dump)', () => {
+  const h = new SpatialHarness({ size: [20, 12, 6] });
+  h.placeEquipment({ id: 'D1', type: 'duct', system: 'supply', size: [1,1,1], center: [2, 2, 0.5] });
+  h.placeEquipment({ id: 'D2', type: 'duct', system: 'supply', size: [1,1,1], center: [4, 2, 0.5] });
+  h.placeEquipment({ id: 'P1', type: 'pipe', system: 'chw',    size: [1,1,1], center: [2, 4, 0.5] });
+  h.placeEquipment({ id: 'FAR', type: 'pipe', system: 'chw',   size: [1,1,1], center: [18, 10, 0.5] });
+  const s = h.regionSummary({ lo: [0,0,0], hi: [8,8,3] });
+  assert.equal(s.count, 3);                          // FAR excluded
+  assert.deepEqual(s.byType, { duct: 2, pipe: 1 });
+  assert.deepEqual(s.bySystem, { supply: 2, chw: 1 });
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);
