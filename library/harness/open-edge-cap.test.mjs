@@ -287,3 +287,28 @@ test('checkFusedMeshClosed accepts an already-indexed mesh too (remaps through t
   assert.equal(r.closed, true);
   assert.equal(r.weldedVertices, 8);
 });
+
+// ---- degenerate-triangle skip (Revisor caveat a: class-filter collapses hidden tris onto a centroid) ----
+test('boundaryLoops SKIPS a degenerate triangle (repeated vertex) — it does not pollute the count', () => {
+  const clean = boundaryLoops(CUBE_OUT);
+  // append a fully-collapsed triangle (all three indices equal) and one with a repeated pair.
+  const withDegenerate = boundaryLoops([...CUBE_OUT, 3, 3, 3, 5, 5, 2]);
+  assert.deepEqual(withDegenerate, clean); // identical — the degenerate triangles contribute nothing
+});
+
+test('checkFusedMeshClosed stays CLOSED when degenerate triangles are present (filter-collapse robustness)', () => {
+  // a closed cube soup + a triangle whose 3 vertices coincide (collapses to one welded vertex).
+  const cubeSoup = soup(CUBE, CUBE_OUT);
+  const degenerate = [1, 1, 1, 1, 1, 1, 1, 1, 1]; // three vertices at the same point → one welded id
+  const r = checkFusedMeshClosed({ positions: [...cubeSoup, ...degenerate] });
+  assert.equal(r.closed, true);
+  assert.equal(r.boundaryEdges, 0); // the degenerate triangle adds no boundary edge
+});
+
+test('a degenerate triangle in a fused mesh does not create phantom open loops', () => {
+  const g = fuse([{ ...openTube(8), runId: 0 }]);
+  const withDeg = { positions: g.positions, index: [...g.index, 0, 0, 0], runId: g.runId };
+  const a = checkFusedShellOpenEdges(g, { degreesByRun: { 0: [2, 2] } });
+  const b = checkFusedShellOpenEdges(withDeg, { degreesByRun: { 0: [2, 2] } });
+  assert.equal(JSON.stringify(a.findings), JSON.stringify(b.findings)); // degenerate ignored
+});
