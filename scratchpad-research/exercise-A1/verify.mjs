@@ -95,7 +95,11 @@ function scoreMode(scenePath) {
     const [oid, pid] = ref.split('.');
     const o = objs.find(x => x.id === oid);
     if (!o || !o.ports || !o.ports[pid]) return null;
-    return [o.center[0] + o.ports[pid][0], o.center[1] + o.ports[pid][1], o.center[2] + o.ports[pid][2]];
+    // accept both the flat [lx,ly,lz] form and the DESIGNSPEC scene_graph {offset,dir}/{position} form
+    const raw = o.ports[pid];
+    const off = Array.isArray(raw) ? raw : (raw.offset || raw.position);
+    if (!off) return null;
+    return [o.center[0] + off[0], o.center[1] + off[1], o.center[2] + off[2]];
   };
   // 1. physical overlap (HARD)
   for (let i = 0; i < objs.length; i++)
