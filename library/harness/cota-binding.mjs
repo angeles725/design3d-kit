@@ -13,7 +13,10 @@
 //
 // fieldProvenance follows the ratified contract (pinned container key obj.fieldProvenance). Per-quantity
 // envelope { v, prov:'measured'|'inferred'|'absent-in-source', raw?, snap?, deltaMm? }, .v null iff absent:
-//   - width/height : measured when a WxH cota binds; {v:null,prov:'absent-in-source'} for runs with no WxH
+//   - labelWidth   : the LABEL-derived width (distinct key). measured when a WxH cota binds, else absent. inv3's
+//                    flank step is the single final writer of fieldProvenance.width and composes it from this.
+//   - height       : measured when a WxH cota binds; {v:null,prov:'absent-in-source'} otherwise (label is the
+//                    sole source — a 2D plan can't show duct height — so no second writer, no rename needed)
 //   - bod          : measured when a BOD cota binds. BOD is ~99% present in source, so absent is the exception,
 //                    NOT a default — we only mark it absent for a run that genuinely has no BOD label near it.
 //   - topExtent    : DERIVED = bod + height, but HELD absent-in-source until the bod/WxH unit pair is confirmed
@@ -81,7 +84,11 @@ export function bindCotasToRuns(sg = {}, { widthGate = 0.02, arcSegments = 8 } =
   const out = runs.map(run => {
     const wh = run.cotas.find(c => c.width != null);
     const bd = run.cotas.find(c => c.bod != null);
-    const width = wh ? measured(wh.width) : absent();
+    // labelWidth (not width): the label-derived width. inv3's flank-vectorize is the SINGLE final writer of
+    // fieldProvenance.width — it reads this labelWidth + the flank measurement and composes the authoritative
+    // width (label wins as design intent, flank fills absent, +deltaMm/widthGate). Emitting under a distinct
+    // key means the two width sources never clobber each other.
+    const labelWidth = wh ? measured(wh.width) : absent();
     const height = wh ? measured(wh.height) : absent();
     const bod = bd ? measured(bd.bod) : absent();
     // topExtent = bod + height (top-of-duct elevation) is DERIVED convenience; bod+height are the load-bearing
@@ -92,7 +99,7 @@ export function bindCotasToRuns(sg = {}, { widthGate = 0.02, arcSegments = 8 } =
     const topExtent = absent();
     return {
       geometryIndex: run.geometryIndex, layer: run.layer,
-      fieldProvenance: { width, height, bod, topExtent },
+      fieldProvenance: { labelWidth, height, bod, topExtent },
       cota: run.cotas.length ? run.cotas.map(c => c.text) : null,
     };
   });
@@ -100,7 +107,7 @@ export function bindCotasToRuns(sg = {}, { widthGate = 0.02, arcSegments = 8 } =
   const stats = {
     runs: runs.length, sizedCotas: sized.length,
     bound: sized.length - unbound.length, unbound: unbound.length,
-    runsWithWidth: out.filter(r => r.fieldProvenance.width.prov === 'measured').length,
+    runsWithLabelWidth: out.filter(r => r.fieldProvenance.labelWidth.prov === 'measured').length,
     runsWithBod: out.filter(r => r.fieldProvenance.bod.prov === 'measured').length,
   };
   return { runs: out, unbound, stats };

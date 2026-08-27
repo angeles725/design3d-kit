@@ -29,7 +29,7 @@ const bound = bindCotasToRuns(sg, { widthGate: 0.02 });
 test('binds a WxH+BOD cota to its nearest run; fieldProvenance under the ratified envelope', () => {
   assert.equal(bound.runs.length, 2, 'two centerline runs');
   const runA = bound.runs.find(r => r.geometryIndex === 0).fieldProvenance;
-  assert.deepEqual(runA.width, { v: 300, prov: 'measured', raw: 300 });
+  assert.deepEqual(runA.labelWidth, { v: 300, prov: 'measured', raw: 300 });
   assert.deepEqual(runA.height, { v: 200, prov: 'measured', raw: 200 });
   assert.equal(runA.bod.prov, 'measured');
   assert.ok(Math.abs(runA.bod.v - 3.2) < 1e-9);
@@ -41,7 +41,7 @@ test('binds a WxH+BOD cota to its nearest run; fieldProvenance under the ratifie
 test('a run with no cota is honestly absent-in-source (not fabricated)', () => {
   const rB = bound.runs.find(r => r.geometryIndex === 1);
   const fp = rB.fieldProvenance;
-  assert.deepEqual(fp.width, { v: null, prov: 'absent-in-source' });
+  assert.deepEqual(fp.labelWidth, { v: null, prov: 'absent-in-source' });
   assert.deepEqual(fp.height, { v: null, prov: 'absent-in-source' });
   assert.deepEqual(fp.bod, { v: null, prov: 'absent-in-source' });
   assert.deepEqual(fp.topExtent, { v: null, prov: 'absent-in-source' });
@@ -53,7 +53,7 @@ test('a cota that binds to no run within the gate is surfaced as unbound (fail-l
   assert.equal(bound.unbound[0].text, '250x150');
   assert.ok(bound.unbound[0].nearestRunDist > 0.02, 'it was beyond the gate');
   assert.equal(bound.stats.bound, 2);
-  assert.equal(bound.stats.runsWithWidth, 1);
+  assert.equal(bound.stats.runsWithLabelWidth, 1);
   assert.equal(bound.stats.runsWithBod, 1);
 });
 
@@ -64,5 +64,5 @@ test('widthGate is tunable: a wider gate binds a farther label', () => {
   assert.equal(tight.unbound.length, 1, '0.1 > 0.02 gate → unbound');
   const wide = bindCotasToRuns(readDxf(dxf2), { widthGate: 0.2 });
   assert.equal(wide.unbound.length, 0, '0.1 < 0.2 gate → bound');
-  assert.equal(wide.runs[0].fieldProvenance.width.v, 400);
+  assert.equal(wide.runs[0].fieldProvenance.labelWidth.v, 400);
 });
