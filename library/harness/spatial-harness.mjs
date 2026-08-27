@@ -89,28 +89,37 @@ export class SpatialHarness {
     return { free: blocked.length === 0, blockedBy: blocked };
   }
   // ---- CONNECT (by port IDENTITY, never coordinates — RULE 006) ----
+  // resolve a port's LOCAL offset from EITHER shape: bare array [x,y,z] (inv3 vectorizer) OR
+  // {position,dn,...} (inv4 element-model). One vocabulary across the BIM lane + tool surface.
+  #portOffset(p) { return Array.isArray(p) ? p : (p?.position || p?.offset || null); }
+  #portDN(o, pid) { const p = o?.ports?.[pid];
+    return (p && !Array.isArray(p) && p.dn != null) ? p.dn : (o?.portDN?.[pid] ?? null); } // inv4 obj OR inv3 parallel map
   #portWorld(ref) { const [oid, pid] = String(ref).split('.'); const o = this.obj.get(oid);
-    const off = o?.ports?.[pid]; if (!o || !off) return null; return [o.center[0]+off[0], o.center[1]+off[1], o.center[2]+off[2]]; }
+    const pos = this.#portOffset(o?.ports?.[pid]); if (!o || !pos) return null;
+    return [o.center[0]+pos[0], o.center[1]+pos[1], o.center[2]+pos[2]]; }
   connectPorts(refA, refB) {
     const a = this.#portWorld(refA), b = this.#portWorld(refB);
     if (!a) return { success:false, reason:`undefined port ${refA}` };
     if (!b) return { success:false, reason:`undefined port ${refB}` };
-    const conn = { from: refA, to: refB, worldA: a, worldB: b, length: Number(dist(a,b).toFixed(4)) };
+    const [oa,pa]=refA.split('.'), [ob,pb]=refB.split('.');
+    const dnA = this.#portDN(this.obj.get(oa), pa), dnB = this.#portDN(this.obj.get(ob), pb);
+    const dnMismatch = (dnA != null && dnB != null && dnA !== dnB); // a reducer legitimately mismatches → FLAG, don't fail
+    const conn = { from: refA, to: refB, worldA: a, worldB: b, length: Number(dist(a,b).toFixed(4)), dnA, dnB, dnMismatch };
     this.connections.push(conn); this.lastOp = { op:'connect', from:refA, to:refB };
-    return { success:true, connection: conn };
+    return { success:true, connection: conn, ...(dnMismatch ? { dnMismatch:true } : {}) };
   }
   connectedTo(id) { const out = new Set();
     for (const c of this.connections) { const fa=c.from.split('.')[0], fb=c.to.split('.')[0];
       if (fa===id) out.add(fb); if (fb===id) out.add(fa); } return [...out]; }
   // ---- CREATE / TRANSFORM (guarded — reserve/commit, never overlaps) ----
-  placeEquipment({ id, type, size, center, clearance, ports }) {
+  placeEquipment({ id, type, size, center, clearance, ports, portDN }) {
     if (this.obj.has(id)) return { success: false, reason: `duplicate id ${id}` };        // RULE 002
     if (!size || size.length !== 3 || size.some(v => !(v>0))) return { success:false, reason:'bad size' }; // RULE 003
     const cand = { phys: aabb(center, size) };
     if (!this.#inBounds(cand.phys)) return { success: false, reason: 'out-of-bounds', suggestions: this.freeSpace(size) }; // RULE 009
     const c = this.#collides(cand, id);
     if (c) return { success: false, reason: `blocked by ${c.id} (${c.kind})`, suggestions: this.freeSpace(size) }; // RULE 001/007
-    this.obj.set(id, { id, type, size, center, clearance, ports });                        // RULE 004/010 commit
+    this.obj.set(id, { id, type, size, center, clearance, ports, portDN });                 // RULE 004/010 commit
     return this.snapshot(id);
   }
   move(id, newCenter) {
@@ -168,11 +177,11 @@ export class SpatialHarness {
              count: this.obj.size };
   }
   // export the scene in the shared verify.mjs schema
-  toScene() { return { room: { size: this.room }, objects: [...this.obj.values()].map(o => ({ id:o.id, size:o.size, center:o.center, ...(o.clearance?{clearance:o.clearance}:{}), ...(o.ports?{ports:o.ports}:{}) })) }; }
+  toScene() { return { room: { size: this.room }, objects: [...this.obj.values()].map(o => ({ id:o.id, size:o.size, center:o.center, ...(o.clearance?{clearance:o.clearance}:{}), ...(o.ports?{ports:o.ports}:{}), ...(o.portDN?{portDN:o.portDN}:{}) })) }; }
   // ---- LOAD an already-validated scene (inverse of toScene; loads committed state, does not re-place) ----
   static fromScene(scene, opts = {}) {
     const h = new SpatialHarness(scene.room, opts);
-    for (const o of (scene.objects || [])) h.obj.set(o.id, { id:o.id, type:o.type, size:o.size, center:o.center, clearance:o.clearance, ports:o.ports });
+    for (const o of (scene.objects || [])) h.obj.set(o.id, { id:o.id, type:o.type, size:o.size, center:o.center, clearance:o.clearance, ports:o.ports, portDN:o.portDN });
     return h;
   }
 }

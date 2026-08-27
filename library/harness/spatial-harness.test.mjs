@@ -153,4 +153,38 @@ t("fromScene rehydrates a validated scene and round-trips toScene", () => {
   assert.deepEqual(h2.toScene(), scene);
 });
 
+
+t("connectPorts accepts inv4 object-form ports {position,dn} + carries DN", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"CH",size:[3,1.2,1.8],center:[2,2,0.9],ports:{out:{position:[1.5,0,0],dn:150}}});
+  h.placeEquipment({id:"P",size:[0.8,0.6,0.9],center:[5,2,0.45],ports:{in:{position:[-0.4,0,0.1],dn:150}}});
+  const r = h.connectPorts("CH.out","P.in");
+  assert.equal(r.success, true);
+  assert.deepEqual(r.connection.worldA, [3.5,2,0.9]);
+  assert.equal(r.connection.dnA, 150); assert.equal(r.connection.dnMismatch, false);
+});
+t("connectPorts flags a DN mismatch (reducer) without failing", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"R",size:[0.5,0.5,0.5],center:[3,3,0.25],ports:{a:{position:[-0.25,0,0],dn:200}, b:{position:[0.25,0,0],dn:150}}});
+  h.placeEquipment({id:"X",size:[0.5,0.5,0.5],center:[5,3,0.25],ports:{a:{position:[-0.25,0,0],dn:150}}});
+  const r2 = h.connectPorts("R.a","X.a");
+  assert.equal(r2.success, true); assert.equal(r2.dnMismatch, true); assert.equal(r2.connection.dnMismatch, true);
+});
+t("connectPorts accepts inv3 parallel portDN map (bare-array ports + portDN)", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"ELB",size:[0.4,0.4,0.4],center:[3,3,0.2],ports:{A:[-0.2,0,0],B:[0,0.2,0]},portDN:{A:100,B:100}});
+  h.placeEquipment({id:"SEG",size:[0.3,0.3,0.3],center:[3,4,0.15],ports:{a:[0,-0.15,0]},portDN:{a:100}});
+  const r = h.connectPorts("ELB.B","SEG.a");
+  assert.equal(r.success, true); assert.equal(r.connection.dnA, 100); assert.equal(r.connection.dnMismatch, false);
+});
+t("array-form ports (no DN) still work unchanged; portDN round-trips through toScene/fromScene", () => {
+  const h = new SpatialHarness(room);
+  h.placeEquipment({id:"A",size:[2,2,2],center:[2,2,1],ports:{p:[1,0,0]},portDN:{p:80}});
+  const scene = h.toScene(); assert.equal(scene.objects[0].portDN.p, 80);
+  const h2 = SpatialHarness.fromScene(scene);
+  h2.placeEquipment({id:"B",size:[2,2,2],center:[6,2,1],ports:{p:[-1,0,0]},portDN:{p:80}});
+  const r = h2.connectPorts("A.p","B.p");
+  assert.equal(r.success, true); assert.deepEqual(r.connection.worldA, [3,2,1]); assert.equal(r.connection.dnA, 80);
+});
+
 console.log(`\n${pass}/${pass} harness tests green`);
