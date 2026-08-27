@@ -1,4 +1,5 @@
-// spatial-harness.mjs — Delta G (v1.19): high-level spatial tool surface over the semantic scene.
+// library: spatial-harness  (harness/spatial-harness.mjs) — Delta G spatial tool surface (investigador2).
+// Delta G (v1.19): high-level spatial tool surface over the semantic scene.
 // The AI works in tools/relations; this engine owns coordinates + GUARDS invariants (RULES 001-010)
 // so an illegal state is impossible by construction. Composes with clash-detect.mjs (narrow BVH) for
 // mesh-exact validation; this broad-phase core is dependency-free. See references/spatial-world-model.md.
