@@ -116,10 +116,20 @@ decision is grounded in the real occupied state, not its own stale mental model.
 ## 8. Promotion gate (honest)
 - S1 (typed relations), S3 (volumes), the compiler-oracle invariant, and the coordinate-frame discipline are
   low-risk and well-evidenced → recommend ADOPT.
-- **S2 (the full transactional placement engine) is gated on A2.** If A2 (N=12) shows NAIVE hard-failing where
-  SPATIAL-ENGINE holds → ADOPT S2 as a core delta. If A2 is ALSO null (both pass) → S2 becomes
-  "optional, density-gated" (engage only above an object-count/occupancy threshold), not a core rule.
-  A2 SPATIAL dispatched to creador2; NAIVE-at-density run still needed to complete the A/B (flagged to i1).
+- **S2 gate — SINGLE-AGENT RESULT (measured).** A1 (N=4) and A2 (N=12) are BOTH null: a single opus copes
+  without the engine (both conditions 10/10 PASS). So in the SINGLE-AGENT regime S2 is a GUARANTEE/robustness
+  mechanism, not a correctness fix — label it "optional, density/robustness-gated". A3 (routing trap) tests a
+  distinct axis (routing ≠ placement) and may still discriminate; if also null, only a STATISTICAL multi-trial
+  could promote S2 within the single-agent regime.
+- **S2 in the MULTI-AGENT regime = REQUIRED, not optional (observability argument, inv2).** Every null so far
+  is single-agent: ONE model holds the whole scene state in-context, so it can avoid self-collision. Two
+  INDEPENDENT agents placing into the same room CANNOT observe each other's in-context state — without a shared
+  ReserveEngine/lock (§9f) they WILL claim overlapping zones. This is an OBSERVABILITY limit, not a density
+  effect, and a stronger model cannot reason it away. Conclusion: **single-agent → S2 is a guarantee;
+  multi-agent concurrent → S2's reserve/lock is REQUIRED for correctness.** This is exactly how our own
+  four-agent team avoids collisions (SendMessage + shared-repo coordination = the human analog of a
+  ReserveEngine). inv2's E4 (two REAL independent creadores contending for one zone) is the exercise expected
+  to yield the first NON-null result — prioritize it over more single-agent density instances.
 
 ## 9. Second-pass enrichments (from a full re-read of investigacion.md §11, lines 7182-8110)
 Concrete details the first-pass skeleton missed; each refines a section above.
