@@ -11,6 +11,18 @@
 
 const num = (v) => parseFloat(v);
 
+// canonical TYPE from a block name (keyword map) — normalizes CH_400TR→chiller, VAV_BOX→vav, etc.
+const TYPE_RULES = [
+  [/chiller|\bch[-_]?\d|\bch\b/i, 'chiller'], [/pump|\bp[-_]?\d/i, 'pump'],
+  [/ahu|air.?hand|handler/i, 'ahu'], [/\bvav\b|vav.?box/i, 'vav'], [/valve/i, 'valve'],
+  [/tank/i, 'tank'], [/\bvfd\b|panel/i, 'vfd'], [/\bfan\b/i, 'fan'], [/boiler/i, 'boiler'], [/\bfcu\b/i, 'fcu'],
+];
+function normalizeType(block = '') { for (const [re, t] of TYPE_RULES) if (re.test(block)) return t; return String(block).toLowerCase() || 'generic'; }
+// default footprint per canonical type (m) — Route-1 fallback when the DXF carries no SIZE attribute
+const SIZE_CATALOG = { chiller: [3.0, 1.2, 1.8], pump: [0.8, 0.6, 0.9], ahu: [2.5, 1.5, 2.0], vav: [0.6, 0.4, 0.4], valve: [0.3, 0.3, 0.3], tank: [1.2, 1.2, 2.0], vfd: [0.6, 0.4, 1.6], fan: [0.8, 0.8, 0.8], boiler: [2.0, 1.2, 1.8], fcu: [1.0, 0.6, 0.3] };
+// parse a SIZE attribute value ("3.0x1.2x1.8" / "3.0X1.2X1.8" / "3.0*1.2*1.8") → [3,1.2,1.8] | null
+function parseSize(s) { const m = String(s).trim().split(/[xX*×]/).map(Number); return (m.length === 3 && m.every(Number.isFinite)) ? m : null; }
+
 // group-code/value pairs (alternating lines); CRLF-safe, trims.
 export function parsePairs(text) {
   const lines = String(text).replace(/\r/g, '').split('\n');
@@ -28,6 +40,8 @@ export function parsePairs(text) {
 // arc provably ends at p1. Returns center/radius/signed-sweep + a sampled polyline p0…p1.
 export function bulgeToArc(p0, p1, bulge, segments = 12) {
   const [x0, y0] = p0, [x1, y1] = p1, z = p0[2] ?? 0;
+  if (Math.abs(bulge) < 1e-9)                                // straight segment — no arc (avoid 1/bulge → NaN)
+    return { straight: true, center: null, radius: Infinity, includedAngleDeg: 0, ccw: false, points: [[x0, y0, z], [x1, y1, z]] };
   const theta = 4 * Math.atan(bulge);                       // signed included angle
   const a = (1 / bulge - bulge) / 2;
   const cx = (x0 + x1 - a * (y1 - y0)) / 2;
@@ -91,23 +105,28 @@ export function readDxf(text, { units = 'm' } = {}) {
           vertices: verts.map(w => ({ point: [w.x, w.y, 0], bulge: w.bulge })), source: src(e) });
         break;
       }
-      case 'INSERT':
+      case 'INSERT': {
+        const block = (first(e, 2) || '').trim();
+        const type = normalizeType(block);
+        const catSize = SIZE_CATALOG[type];
         pendingInsert = {
-          id: (first(e, 2) || 'BLOCK').trim(),                 // temporary id = block name; ATTRIB overrides
-          type: (first(e, 2) || 'generic').trim().toLowerCase(),
-          size: [1, 1, 1],                                     // placeholder — no block-def bbox / schedule yet
+          id: block || 'BLOCK',                                // block name until a TAG attrib overrides
+          type,
+          size: catSize ? [...catSize] : [1, 1, 1],            // Route-1 catalog default; ATTRIB SIZE overrides
           center: [num(first(e, 10)), num(first(e, 20)), num(first(e, 30) ?? '0')],
-          source: { ...src(e), block: (first(e, 2) || '').trim(), sizeSource: 'placeholder',
+          source: { ...src(e), block, sizeSource: catSize ? 'catalog' : 'placeholder',
             scale: [num(first(e, 41) ?? '1'), num(first(e, 42) ?? '1'), num(first(e, 43) ?? '1')],
             rotationDeg: num(first(e, 50) ?? '0') },
         };
         objects.push(pendingInsert);
         break;
+      }
       case 'ATTRIB':
         if (pendingInsert) {
-          const tag = (first(e, 2) || '').trim(), val = (first(e, 1) || '').trim();
-          if (val) pendingInsert.id = val;                    // e.g. CH-01
+          const tag = (first(e, 2) || '').trim().toUpperCase(), val = (first(e, 1) || '').trim();
           (pendingInsert.attributes ||= {})[tag || 'TAG'] = val;
+          if (tag === 'SIZE') { const sz = parseSize(val); if (sz) { pendingInsert.size = sz; pendingInsert.source.sizeSource = 'attrib'; } }
+          else if (tag === 'TAG' && val) pendingInsert.id = val; // e.g. CH-01
         }
         break;
       case 'SEQEND': pendingInsert = null; break;
