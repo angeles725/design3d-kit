@@ -108,3 +108,86 @@ test('shared fixture: duct-network.json parses and self-compares with zero drift
   const r = checkPassParity(fixture, fixture);
   assert.equal(r.ok, true); // identical → zero drift (the reference is internally consistent)
 });
+
+// ---- PROVENANCE ENVELOPE preservation (contract §2 / retro P3) ----
+// A duct whose width was measured but whose HEIGHT is absent-in-source (evidence below chance) — Revisor's case.
+const provDuct = (over = {}) => ({
+  id: 'DUCT-0001', type: 'duct', center: [0, 0, 0],
+  fieldProvenance: {
+    width: { v: 0.105, prov: 'measured', raw: 0.105, snap: 0.1016, deltaMm: 3.4 },
+    height: { v: null, prov: 'absent-in-source', raw: null, snap: null, deltaMm: null },
+    bod: { v: 3.2, prov: 'measured' },
+    topExtent: { v: null, prov: 'absent-in-source' },
+  },
+  ...over,
+});
+const dp = (fp) => scene([provDuct({ fieldProvenance: fp })]);
+
+test('provenance: identical envelopes → no drift', () => {
+  const r = checkPassParity(scene([provDuct()]), scene([provDuct()]));
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.drifts, []);
+});
+
+test('provenance: a legitimately absent-in-source field kept null → NO drift (h=None is correct)', () => {
+  const r = checkPassParity(scene([provDuct()]), scene([provDuct()]));
+  assert.ok(!r.drifts.some((d) => String(d.field).startsWith('prov')));
+});
+
+test('provenance: FABRICATED height (source absent-in-source/null → built invents 0.30) → provFabricated drift', () => {
+  const built = provDuct();
+  built.fieldProvenance = JSON.parse(JSON.stringify(built.fieldProvenance));
+  built.fieldProvenance.height = { v: 0.30, prov: 'inferred', raw: null, snap: null, deltaMm: null };
+  const r = checkPassParity(scene([provDuct()]), scene([built]));
+  assert.equal(r.ok, false);
+  assert.ok(r.drifts.some((d) => d.field === 'provFabricated' && d.port === 'height' && d.actual === 0.30));
+});
+
+test('provenance: LOST measurement (source measured width → built nulls it) → provLost drift', () => {
+  const r = checkPassParity(scene([provDuct()]), dp({
+    width: { v: null, prov: 'absent-in-source', raw: null, snap: null, deltaMm: null },
+    height: { v: null, prov: 'absent-in-source' }, bod: { v: 3.2, prov: 'measured' }, topExtent: { v: null, prov: 'absent-in-source' },
+  }));
+  assert.ok(r.drifts.some((d) => d.field === 'provLost' && d.port === 'width'));
+});
+
+test('provenance: dropped envelope entirely → provDropped drift', () => {
+  const built = provDuct(); delete built.fieldProvenance;
+  const r = checkPassParity(scene([provDuct()]), scene([built]));
+  assert.ok(r.drifts.some((d) => d.field === 'provDropped'));
+});
+
+test('provenance: dropped one field → provFieldMissing drift', () => {
+  const built = provDuct();
+  built.fieldProvenance = { ...built.fieldProvenance }; delete built.fieldProvenance.bod;
+  const r = checkPassParity(scene([provDuct()]), scene([built]));
+  assert.ok(r.drifts.some((d) => d.field === 'provFieldMissing' && d.port === 'bod'));
+});
+
+test('provenance: raw/deltaMm histogram data changed → provRaw + provDelta drift (Revisor snap histogram)', () => {
+  const r = checkPassParity(scene([provDuct()]), dp({
+    width: { v: 0.105, prov: 'measured', raw: 0.082, snap: 0.1016, deltaMm: 19.6 }, // interior-pair error masked
+    height: { v: null, prov: 'absent-in-source' }, bod: { v: 3.2, prov: 'measured' }, topExtent: { v: null, prov: 'absent-in-source' },
+  }));
+  assert.ok(r.drifts.some((d) => d.field === 'provRaw' && d.port === 'width'));
+  assert.ok(r.drifts.some((d) => d.field === 'provDelta' && d.port === 'width'));
+});
+
+test('provenance: prov-class change (measured → inferred) → provClass drift', () => {
+  const r = checkPassParity(scene([provDuct()]), dp({
+    width: { v: 0.105, prov: 'inferred', raw: 0.105, snap: 0.1016, deltaMm: 3.4 },
+    height: { v: null, prov: 'absent-in-source' }, bod: { v: 3.2, prov: 'measured' }, topExtent: { v: null, prov: 'absent-in-source' },
+  }));
+  assert.ok(r.drifts.some((d) => d.field === 'provClass' && d.port === 'width'));
+});
+
+test('provenance: requireProv:false disables the envelope check', () => {
+  const built = provDuct(); delete built.fieldProvenance;
+  const r = checkPassParity(scene([provDuct()]), scene([built]), { requireProv: false });
+  assert.ok(!r.drifts.some((d) => String(d.field).startsWith('prov')));
+});
+
+test('provenance: objects without fieldProvenance are unaffected (back-compat)', () => {
+  const r = checkPassParity(scene([elbow()]), scene([elbow()]));
+  assert.equal(r.ok, true);
+});
