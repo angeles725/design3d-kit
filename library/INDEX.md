@@ -147,3 +147,9 @@ closes) · `superseded-by: <name>`.
 | name | kind | what | source · gate evidence | status |
 |---|---|---|---|---|
 | voxel-skeletonize | module (parts) | UPSTREAM stage of duct-vectorize — turns a voxel-drawn duct CENTERLINE (occupied cells) into axis-aligned duct RUNS. `skeletonizeVoxelRuns(cells,{cellSize,origin,defaultSection})→{runs:[{id,a,b,radius\|width/height,cells}]}` walks a 6-connected voxel graph and SPLITS at branch/end nodes (deg≠2), corners (direction change), and cross-section changes (→reducer); run endpoints are world coords so a shared corner/branch/section-boundary coincides exactly, which is what classifyDuctJunctions groups on. Vectorization, NOT marching cubes (parametric runs, never smoothed mesh). Pure zero-import, deterministic. Completes the doc's voxel-as-spatial-brain pipeline: voxel centerline → skeletonize → classifyDuctJunctions → ductNetworkToScene → SpatialHarness.fromScene → rect-duct/hvac-fittings. | `library/parts/voxel-skeletonize.mjs` (+ `.test.mjs`, 8 green incl. end-to-end voxel→scene) · investigacion.md §3202 | ready |
+
+## v1.19 — voxel→realista anti-drift gate
+
+| name | kind | what | source · gate evidence | status |
+|---|---|---|---|---|
+| pass-parity | module (harness) | The realistic-pass ANTI-DRIFT gate (investigacion.md §612-652 "preserve exactly transforms/bboxes/ports/diameters/centerlines"). `checkPassParity(source, built, {posTol,requireDN})→{ok, missing, extra, drifts}` compares the realistic scene against the blockout/spec source (both in ductNetworkToScene shape) and flags every element that moved center, moved/lost a port, changed DN, or changed type — the silent engineering loss the visual/ΔE00 gate can't see. Companion to the de-box transform (it gates its output). REPORTS-ONLY, deterministic, zero-dep, TEST jurisdiction. | `library/harness/pass-parity.mjs` (+ `.test.mjs`, 10 green) · investigacion.md realistic-pass rule | ready |
