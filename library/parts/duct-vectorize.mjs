@@ -79,3 +79,54 @@ export function classifyDuctJunctions(runs) {
   junctions.sort((u, v) => u.position[0] - v.position[0] || u.position[1] - v.position[1] || u.position[2] - v.position[2]);
   return { junctions };
 }
+
+// ---- increment 2: emit i2's spatial-harness scene_graph so the fitting-list round-trips with zero glue.
+const FITTING_PREFIX = { elbow: 'ELB', tee: 'TEE', reducer: 'RED', cross: 'CRS' };
+const portOffset = (sec) => (sec.radius != null ? sec.radius : Math.max(sec.width ?? 0, sec.height ?? 0) / 2);
+const dnOf = (sec) => (sec.radius != null ? +(2 * sec.radius).toFixed(6) : `${sec.width}x${sec.height}`);
+
+/**
+ * Turn a duct RUN network into i2's `SpatialHarness.fromScene` shape: each FITTING junction becomes one
+ * scene object with LOCAL port offsets + a parallel portDN map (DN carried so connectPorts can validate a
+ * mismatch), and each run becomes a connection linking the two endpoint port refs by IDENTITY (never
+ * coordinates). Straight/free-end junctions emit no fitting; a run end not at a fitting yields a
+ * `free:<runId>:<a|b>` ref the caller resolves to equipment. Deterministic (stable ids + port labels).
+ * @param {Parameters<typeof classifyDuctJunctions>[0]} runs
+ * @returns {{objects:{id:string,type:string,size:number[],center:number[],ports:Record<string,number[]>,portDN:Record<string,number|string>}[],
+ *            connections:{run:string,a:string,b:string}[]}}
+ */
+export function ductNetworkToScene(runs) {
+  const { junctions } = classifyDuctJunctions(runs);
+  const objects = [];
+  const endRef = new Map();   // `${runId}|${posKey}` → "ID.PORT"
+  const counters = {};
+  for (const j of junctions) {
+    const prefix = FITTING_PREFIX[j.type];
+    if (!prefix) continue;    // straight / free-end / nonplanar → no fitting object
+    const n = (counters[j.type] = (counters[j.type] || 0) + 1);
+    const id = `${prefix}-${String(n).padStart(4, '0')}`;
+    // stable port labels: sort ends by direction so A,B,C,D don't depend on run input order
+    const ends = j.directions
+      .map((dir, k) => ({ dir, runId: j.runIds[k], section: j.sections[k] }))
+      .sort((p, q) => p.dir[0] - q.dir[0] || p.dir[1] - q.dir[1] || p.dir[2] - q.dir[2]);
+    const ports = {}, portDN = {};
+    let maxOff = 0;
+    ends.forEach((e, k) => {
+      const label = String.fromCharCode(65 + k); // A, B, C, D
+      const off = portOffset(e.section);
+      maxOff = Math.max(maxOff, off);
+      ports[label] = [e.dir[0] * off, e.dir[1] * off, e.dir[2] * off];
+      portDN[label] = dnOf(e.section);
+      endRef.set(`${e.runId}|${key3(j.position)}`, `${id}.${label}`);
+    });
+    const d = 2 * maxOff;
+    objects.push({ id, type: j.type, size: [d, d, d], center: j.position.slice(), ports, portDN });
+  }
+  const connections = [];
+  for (const r of runs) {
+    const a = endRef.get(`${r.id}|${key3(r.a)}`) || `free:${r.id}:a`;
+    const b = endRef.get(`${r.id}|${key3(r.b)}`) || `free:${r.id}:b`;
+    connections.push({ run: r.id, a, b });
+  }
+  return { objects, connections };
+}
