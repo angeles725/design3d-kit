@@ -205,16 +205,25 @@ export function segmentTrianglesByRunId(index, runId) {
 }
 
 /**
- * Fused-mesh see-through / uncapped gate (Revisor WU-L4-B). Segments a fused duct mesh by the per-vertex
- * runId attribute and gates each run's open boundary loops against its expected FREE ends (from endpoint
- * degree), with the -1 accessory policy. REPORTS-ONLY, deterministic. Run on ACTIVE-CLIPPED geometry so
- * clip cuts surface as real open loops.
+ * Per-run topological open-shell gate over a fused duct mesh (segments by the per-vertex runId attribute).
  *
- * Four categories (Revisor + @3D): (a) TERMINAL free end (degree<2) — legitimately open, NOT flagged;
- * (b) CLIP-INDUCED + (c) LOST-NEIGHBOUR-COVERAGE — both are degree>=2 openings that must be section-capped,
- * reported as `connected-open` (distinguishing b vs c needs the active clip plane — a later increment);
- * (d) LOFT/accessory OPEN — runId===accessoryRunId shells with open loops (the 124 constructor-open lofts
- * with no end caps), reported as `accessory-open` (advisory by default; opts.accessoryHard makes it block).
+ * ⚠️ SCOPE CORRECTION (@3D measured the real system-3d build, 2026-08-27 — earlier claims were wrong):
+ *   1. CLIP-CUTS ARE RENDER-TIME, NOT TOPOLOGY. system-3d's bay clip is a render clipping plane; the fused
+ *      solid is WHOLE, so a clip cut is NEVER an open edge in the mesh. This gate CANNOT and MUST NOT be
+ *      used to catch the WU-L4-B "see-through" defect — that is a RENDER/PIXEL check (framebuffer,
+ *      render-is-authority), outside the kit's offline topology surface. A topology gate claiming to catch
+ *      a render-time defect goes green and MISLEADS.
+ *   2. NON-INDEXED input: system-3d's mesh has NO index — every triangle is an island, so this gate is only
+ *      meaningful after WELD-BY-POSITION (see `weldByPosition` / `checkFusedMeshClosed`). Feed a welded index.
+ *   3. VALIDITY DEPENDS ON STRUCTURE: per-run segmentation is correct ONLY when each run is a SEPARATE
+ *      self-closed shell. On a CONTINUOUS manifold it false-positives at every junction seam — use the
+ *      whole-mesh `checkFusedMeshClosed` there instead.
+ * What it legitimately does (welded, separate-shell inputs): flags a run whose shell is genuinely
+ * TOPOLOGICALLY OPEN — a missing cap, e.g. the pre-B1 constructor-open lofts (`accessory-open`). It is a
+ * closedness / regression check, NOT a clip-cut or see-through detector.
+ *
+ * REPORTS-ONLY, deterministic. Categories: (a) TERMINAL free end (degree<2) not flagged; degree>=2 openings
+ * `connected-open`; runId===accessoryRunId open shells `accessory-open` (advisory unless opts.accessoryHard).
  *
  * @param {{positions?:ArrayLike<number>, index:ArrayLike<number>, runId:ArrayLike<number>}} geom
  * @param {{degreesByRun?:Record<number,number[]>, accessoryRunId?:number, defaultExpectedOpenLoops?:number,
@@ -273,4 +282,67 @@ export function checkFusedShellOpenEdges(geom, opts = {}) {
   if (emit && !ok) console.error('[open-edge-cap] fused see-through/uncapped shells (WU-L4-B): '
     + JSON.stringify(findings.filter((f) => f.hard)));
   return { ok, runs, findings, accessoryOpenLoops, mixedTriangles: mixed, checkedRuns: runs.length };
+}
+
+// ---- WELD + WHOLE-MESH closedness (the correct topological check for the non-indexed fused solid). ------
+// system-3d's fused mesh is NON-INDEXED (position/normal/color/runId per vertex, no setIndex); every triangle
+// is an island, so a raw boundary count is ~127,600 false opens. Weld coincident vertices FIRST.
+// WELD TOLERANCE = 0 (exact bit-equality) by default, per @3D: within each closed primitive, coincident
+// vertices come from the SAME expression (pushBox reuses v[k]; loft caps reuse A[i]/B[i]; pushTube recomputes
+// P(t,k) identically) → identical Float32, no drift to weld. A LARGE tolerance is DANGEROUS here, not robust:
+// the 2413 mitered stubs INTERPENETRATE the runs they join, so slack welding fuses genuinely distinct surfaces
+// and CLOSES A REAL HOLE — the exact defect the gate exists to find (green by construction). Smaller is always
+// correct. Safe window if an epsilon is unavoidable: (7.63e-6, 5.08e-2) m; 1e-4 sits mid-decades.
+
+/**
+ * Weld coincident vertices, returning a remap old-vertex-index -> welded-vertex-index. Default tolerance 0 =
+ * exact equality (string key of the raw coordinates); tolerance > 0 quantizes to a grid of that size.
+ * @param {ArrayLike<number>} positions  flat [x,y,z,...].
+ * @param {number} [tolerance=0]  metres; 0 = exact. Keep it as SMALL as possible (see the warning above).
+ * @returns {{remap:number[], weldedVertices:number, originalVertices:number}}
+ */
+export function weldByPosition(positions, tolerance = 0) {
+  const n = positions.length / 3;
+  const map = new Map();
+  const remap = new Array(n);
+  let next = 0;
+  const q = tolerance > 0 ? (v) => Math.round(v / tolerance) : (v) => v;
+  for (let i = 0; i < n; i++) {
+    const k = `${q(positions[i * 3])},${q(positions[i * 3 + 1])},${q(positions[i * 3 + 2])}`;
+    let vi = map.get(k);
+    if (vi === undefined) { vi = next++; map.set(k, vi); }
+    remap[i] = vi;
+  }
+  return { remap, weldedVertices: next, originalVertices: n };
+}
+
+/**
+ * Whole-mesh topological CLOSEDNESS of a fused solid — the correct, non-speculative check for system-3d's
+ * continuous non-indexed mesh. Welds by position (default exact), then counts the boundary over the WHOLE
+ * mesh (not per-run, which false-positives at junction seams on a continuous manifold). `closed:true` (0
+ * boundary edges, no non-manifold) PROVES the see-through is NOT a topological hole — it rules out the
+ * open-shell hypothesis (complements Revisor's signedVolume 583+/0-) and points the fix at the render/clip
+ * layer. `closed:false` is a genuine topological defect (a real missing-cap hole / regression). REPORTS-ONLY.
+ *
+ * @param {{positions:ArrayLike<number>, index?:ArrayLike<number>}} geom  index optional (non-indexed => soup).
+ * @param {{weldTolerance?:number, emit?:boolean, label?:string}} [opts]  weldTolerance default 0 (exact).
+ * @returns {{closed:boolean, boundaryEdges:number, openLoops:number, nonManifoldEdges:number,
+ *            weldedVertices:number, originalVertices:number, weldTolerance:number}}
+ */
+export function checkFusedMeshClosed(geom, opts = {}) {
+  const { positions } = geom;
+  const tol = opts.weldTolerance ?? 0;
+  const { remap, weldedVertices, originalVertices } = weldByPosition(positions, tol);
+  // Non-indexed soup -> triangles are consecutive vertex triples (sequential source index).
+  const src = geom.index ?? Array.from({ length: originalVertices }, (_, i) => i);
+  const index = Array.from(src, (v) => remap[v]);
+  const b = boundaryLoops(index);
+  const closed = b.openEdges === 0 && b.nonManifoldEdges === 0;
+  if ((opts.emit ?? true) && !closed) {
+    console.error(`[open-edge-cap] fused mesh NOT closed (${opts.label || 'mesh'}): `
+      + `${b.openEdges} boundary edge(s), ${b.openLoops} loop(s), ${b.nonManifoldEdges} non-manifold `
+      + `(weld tol ${tol}, ${originalVertices}->${weldedVertices} verts) — a genuine topological hole, NOT a clip-cut`);
+  }
+  return { closed, boundaryEdges: b.openEdges, openLoops: b.openLoops, nonManifoldEdges: b.nonManifoldEdges,
+    weldedVertices, originalVertices, weldTolerance: tol };
 }
