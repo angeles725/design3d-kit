@@ -138,3 +138,21 @@ test('REAL-DATA composition: triage + degrees yield all three category signals o
   // every certified run crosses exactly one plane (the two bays are disjoint on x).
   for (const r of FIX) assert.equal(Number(hiCut.has(r.id)) + Number(loCut.has(r.id)), 1, `run ${r.id} crosses exactly one plane`);
 });
+
+// ---- run-shape consistency: accept {a,b} (duct-vectorize shape) as well as {p0,p1} ----
+test('clipPlaneTriage accepts {a,b} endpoints (the canonical duct-vectorize run shape) identically to {p0,p1}', () => {
+  const ab = [{ id: 'cross', a: [6, 0, 0], b: [8, 0, 0] }, { id: 'above', a: [8, 0, 0], b: [10, 0, 0] }];
+  const p = [{ id: 'cross', p0: [6, 0, 0], p1: [8, 0, 0] }, { id: 'above', p0: [8, 0, 0], p1: [10, 0, 0] }];
+  assert.deepEqual(clipPlaneTriage(ab, HIGH).crossing, ['cross']);
+  assert.deepEqual(clipPlaneTriage(ab, HIGH).crossing, clipPlaneTriage(p, HIGH).crossing); // same result, either shape
+});
+
+test('the SAME runs array (a/b) feeds clipPlaneTriage AND endpointDegreesFromRuns without re-mapping', () => {
+  // duct-vectorize's endpointDegreesFromRuns needs {id,a,b}; the triage now reads the same shape.
+  const runs = [
+    { id: 'r1', a: [0, 0, 0], b: [7, 0, 0], radius: 0.1 },  // crosses x=7.072? no (b.x=7 < 7.072)
+    { id: 'r2', a: [7, 0, 0], b: [9, 0, 0], radius: 0.1 },  // crosses x=7.072 (7..9)
+  ];
+  assert.deepEqual(clipPlaneTriage(runs, HIGH).crossing, ['r2']);
+  assert.equal(expectedOpenLoopsFromDegrees([2, 2]), 0); // both endpoints connected → through-run, 0 free
+});
