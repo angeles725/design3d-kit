@@ -1,11 +1,13 @@
 // library: cheap-render.test.mjs — wiring/contract tests (TDD, RED → GREEN, v1.0).
 // Tests ONLY the fallback contract and flag threading.
 // Rule 7 applies: do NOT assert pixels or simulate the renderer.
-// Tests assume puppeteer is NOT installed (the typical WSL2/no-GPU environment).
+// Tests are ENVIRONMENT-INDEPENDENT: the fallback path is forced via an injected
+// loadPuppeteer loader, and the webgl path uses a fake puppeteer — so they pass
+// whether or not puppeteer is actually installed. No real pixels are asserted.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -47,6 +49,7 @@ test('renderReal=true, puppeteer unavailable → soft-raster fallback, GR1 passe
     const r = await runGuard(scene, 'test intent', {
       renderReal: true,
       artifactPath: tmpHtml,
+      loadPuppeteer: async () => null, // force "unavailable" deterministically (env-independent)
     });
     assert.equal(r.renderMode, 'soft-raster',
       'renderMode must be soft-raster when puppeteer is unavailable');
@@ -87,7 +90,7 @@ test('cheapRender with a valid HTML but no puppeteer: never throws, returns soft
   let threw = false;
   let result;
   try {
-    result = await cheapRender(tmpHtml, { timeoutMs: 5000 });
+    result = await cheapRender(tmpHtml, { timeoutMs: 5000, loadPuppeteer: async () => null });
   } catch {
     threw = true;
   } finally {
@@ -134,4 +137,33 @@ test('rails.gr1.renderMode reflects the actual renderMode used', async () => {
   const r = await runGuard(scene, 'test intent');
   assert.equal(r.rails.gr1.renderMode, 'soft-raster',
     'rails.gr1.renderMode must match the actual renderMode');
+});
+
+// ---- (g) webgl path via an injected FAKE puppeteer (no GPU, no real browser) ---
+// The fake never produces real pixels — it writes a stub file so we can assert the
+// SUCCESS WIRING (renderMode 'webgl', imagePath set) deterministically in CI.
+
+test('cheapRender webgl path: injected fake puppeteer → renderMode webgl + imagePath', async () => {
+  const tmpHtml = path.join(tmpdir(), `cr-webgl-${randomUUID()}.html`);
+  writeFileSync(tmpHtml, '<html><body><canvas id="c"></canvas></body></html>');
+  const fakePuppeteer = {
+    launch: async () => ({
+      newPage: async () => ({
+        setViewport: async () => {},
+        goto: async () => {},
+        screenshot: async ({ path: p }) => { writeFileSync(p, Buffer.from('PNGSTUB')); },
+      }),
+      close: async () => {},
+    }),
+  };
+  let result;
+  try {
+    result = await cheapRender(tmpHtml, { timeoutMs: 8000, loadPuppeteer: async () => fakePuppeteer });
+    assert.equal(result.renderMode, 'webgl', 'renderMode must be webgl when the render succeeds');
+    assert.ok(result.imagePath, 'imagePath must be set on a successful render');
+    assert.ok(existsSync(result.imagePath), 'the image file must exist on a successful render');
+  } finally {
+    try { unlinkSync(tmpHtml); } catch { /* ignore */ }
+    if (result?.imagePath) { try { unlinkSync(result.imagePath); } catch { /* ignore */ } }
+  }
 });
