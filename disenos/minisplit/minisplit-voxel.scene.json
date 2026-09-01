@@ -1,0 +1,15 @@
+{
+  "intent": "Mini-split HVAC diorama — indoor wall head unit (evaporator) + outdoor condenser unit; three r160 standalone HTML; 1u=1m; voxel massing is the dimensional source of truth; realista = parametric geometry, NOT PBR-on-voxel. Real dims: indoor 0.90x0.30x0.20 m, outdoor 0.84x0.55x0.30 m.",
+  "voxelSize": 0.05,
+  "objects": [
+    { "id": "wall",              "center": [0.00, 1.25, -0.175], "size": [3.00, 2.50, 0.05] },
+    { "id": "slab",              "center": [1.425, 0.05, 0.55],  "size": [1.15, 0.10, 0.90] },
+    { "id": "indoor-body",       "center": [-0.70, 2.05, -0.05], "size": [0.90, 0.30, 0.20] },
+    { "id": "indoor-louvers",    "center": [-0.70, 1.95, 0.05],  "size": [0.80, 0.06, 0.02] },
+    { "id": "indoor-display",    "center": [-0.11, 2.115, 0.05], "size": [0.14, 0.05, 0.02] },
+    { "id": "outdoor-body",      "center": [1.42, 0.375, 0.45],  "size": [0.84, 0.55, 0.30] },
+    { "id": "outdoor-fan",       "center": [1.42, 0.40, 0.60],   "size": [0.64, 0.46, 0.04] },
+    { "id": "lineset-vertical",  "center": [-1.10, 1.175, -0.10],"size": [0.06, 1.75, 0.06] },
+    { "id": "lineset-horizontal","center": [-0.13, 0.33, -0.10], "size": [2.00, 0.06, 0.06] }
+  ]
+}

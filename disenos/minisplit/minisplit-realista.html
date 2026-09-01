@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini-Split — Realista PBR</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #06080d; overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    font: 12px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color: #cdd6df; background: rgba(6,8,13,.62); border: 1px solid #1c2530;
+    border-radius: 8px; padding: 10px 12px; max-width: 360px; pointer-events: none;
+  }
+  #hud h1 { margin: 0 0 4px; font-size: 13px; color: #7fe9dc; letter-spacing: .3px; }
+  #hud .sub { color: #8ea0ab; }
+  #hud .pass { color: #ffcf6b; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud">
+  <h1>MINI-SPLIT HVAC — realista (parametric PBR)</h1>
+  <div class="sub">indoor head unit + outdoor condenser · geometry, not PBR-on-voxel</div>
+  <div class="pass" id="passlabel">pass: realista · rounded-box cabinets · lathe fan · swept lineset</div>
+  <div class="sub">indoor 0.90×0.30×0.20 m · outdoor 0.84×0.55×0.30 m · 1u = 1 m</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// 1 world unit = 1 m
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080d);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 1000);
+camera.position.set(2.6, 2.2, 3.4);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.autoRotate = false;
+controls.target.set(0.2, 1.1, 0.15);
+
+// --- light rig ---
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(3.2, 5.0, 3.6); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 20;
+key.shadow.camera.left = -5; key.shadow.camera.right = 5;
+key.shadow.camera.top = 5; key.shadow.camera.bottom = -5;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xbcd0ff, 0.5); fill.position.set(-3, 3, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0x00d4aa, 0.25); rim.position.set(-2, 2.5, -4); scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xcde0ee, 0x20272f, 0.55));
+scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+
+// --- material palette (near-binary metalness; painted sheet = dielectric + clearcoat) ---
+const M = {
+  caseWhite: new THREE.MeshPhysicalMaterial({ color: 0xf4f7f8, metalness: 0.0, roughness: 0.45, clearcoat: 0.9, clearcoatRoughness: 0.12, envMapIntensity: 1.2 }),
+  caseGrey:  new THREE.MeshPhysicalMaterial({ color: 0xc9d0d5, metalness: 0.0, roughness: 0.5,  clearcoat: 0.8, clearcoatRoughness: 0.16, envMapIntensity: 1.2 }),
+  louver:    new THREE.MeshStandardMaterial({ color: 0xaeb8bf, metalness: 0.0, roughness: 0.6 }),
+  display:   new THREE.MeshStandardMaterial({ color: 0x0b3b38, emissive: 0x22d4c4, emissiveIntensity: 1.4, roughness: 0.3 }),
+  grille:    new THREE.MeshStandardMaterial({ color: 0x2f3941, metalness: 0.85, roughness: 0.4, envMapIntensity: 1.6 }),
+  blade:     new THREE.MeshStandardMaterial({ color: 0xb9c4cc, metalness: 0.9, roughness: 0.35, envMapIntensity: 1.6 }),
+  copper:    new THREE.MeshStandardMaterial({ color: 0xc27a3e, metalness: 1.0, roughness: 0.32, envMapIntensity: 1.8 }),
+  insul:     new THREE.MeshStandardMaterial({ color: 0x1b1e22, metalness: 0.0, roughness: 0.95 }),
+  bracket:   new THREE.MeshStandardMaterial({ color: 0x6b7580, metalness: 0.9, roughness: 0.45, envMapIntensity: 1.4 }),
+};
+
+function add(mesh, cast = true, recv = true) { mesh.castShadow = cast; mesh.receiveShadow = recv; scene.add(mesh); return mesh; }
+function roundedBox(w, h, d, r, mat, pos) {
+  const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), mat);
+  m.position.set(pos[0], pos[1], pos[2]); return add(m);
+}
+
+// ===== Back wall + slab (diorama context) =====
+add(new THREE.Mesh(new THREE.BoxGeometry(3.0, 2.5, 0.05),
+  new THREE.MeshStandardMaterial({ color: 0x1a2028, roughness: 0.95 })))
+  .position.set(0, 1.25, -0.175);
+const slab = add(new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.10, 0.90),
+  new THREE.MeshStandardMaterial({ color: 0x3d454d, roughness: 0.9 })));
+slab.position.set(1.425, 0.05, 0.55);
+
+// ===== INDOOR head unit (0.90 x 0.30 x 0.20) — rounded cabinet, louvers, display =====
+const inC = [-0.70, 2.05, -0.05];
+roundedBox(0.90, 0.30, 0.20, 0.05, M.caseWhite, inC);
+// angled louver slats across the bottom-front
+for (let i = 0; i < 6; i++) {
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.80, 0.018, 0.02), M.louver);
+  s.position.set(inC[0], inC[1] - 0.10 + i * 0.016, inC[2] + 0.095);
+  s.rotation.x = -0.5; add(s);
+}
+// display chip (emissive)
+const disp = add(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.012), M.display));
+disp.position.set(inC[0] + 0.30, inC[1] + 0.06, inC[2] + 0.10);
+// wall mounting plate behind
+roundedBox(0.86, 0.10, 0.02, 0.02, M.bracket, [inC[0], inC[1] + 0.05, inC[2] - 0.11]);
+
+// ===== OUTDOOR condenser (0.84 x 0.55 x 0.30) — cabinet, fan, wire grille, top slats =====
+const outC = [1.42, 0.375, 0.45];
+roundedBox(0.84, 0.55, 0.30, 0.03, M.caseGrey, outC);
+// top discharge slats
+for (let i = 0; i < 5; i++) {
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.012, 0.24), M.louver);
+  s.position.set(outC[0], outC[1] + 0.28, outC[2] - 0.10 + i * 0.05); add(s);
+}
+// side intake grille (louvers on -X face)
+for (let i = 0; i < 8; i++) {
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.40, 0.24), M.louver);
+  s.position.set(outC[0] - 0.42, outC[1], outC[2] - 0.10 + i * 0.028); add(s);
+}
+
+// ---- FAN assembly on the +Z front face ----
+const fanZ = outC[2] + 0.152;
+const fan = new THREE.Group();
+fan.position.set(outC[0], outC[1] + 0.02, fanZ);
+scene.add(fan);
+const R = 0.23;
+// recessed venturi ring (torus)
+const shroud = add(new THREE.Mesh(new THREE.TorusGeometry(R, 0.025, 12, 40), M.grille));
+shroud.position.copy(fan.position); scene.add(shroud);
+// spinning blade set (hub + 5 tapered blades)
+const spinner = new THREE.Group(); fan.add(spinner);
+const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 16), M.grille);
+hub.rotation.x = Math.PI / 2; spinner.add(hub);
+for (let i = 0; i < 5; i++) {
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.075, 0.006), M.blade);
+  blade.position.set(0.10, 0, 0);
+  blade.rotation.z = 0.35; // pitch
+  const arm = new THREE.Group(); arm.add(blade);
+  arm.rotation.z = (i / 5) * Math.PI * 2; spinner.add(arm);
+}
+// wire grille: concentric rings + radial spokes in front of the blades
+const gz = 0.03;
+for (const rr of [R * 0.35, R * 0.62, R * 0.9]) {
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.004, 8, 40), M.grille);
+  ring.position.set(0, 0, gz); fan.add(ring);
+}
+for (let i = 0; i < 8; i++) {
+  const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, R * 2, 6), M.grille);
+  spoke.position.set(0, 0, gz); spoke.rotation.z = (i / 8) * Math.PI; fan.add(spoke);
+}
+
+// ===== Refrigerant LINE SET — swept insulated copper bundle indoor→outdoor =====
+const path = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(inC[0] + 0.10, inC[1] - 0.14, inC[2] - 0.06), // exit under indoor unit
+  new THREE.Vector3(inC[0] - 0.40, 1.30, -0.10),
+  new THREE.Vector3(inC[0] - 0.40, 0.30, -0.10),                  // down the wall
+  new THREE.Vector3(0.20, 0.28, 0.05),                            // along the base
+  new THREE.Vector3(outC[0] - 0.30, 0.30, 0.35),
+  new THREE.Vector3(outC[0] - 0.40, 0.55, 0.45),                  // up to service valves
+]);
+// insulation (fat foam tube) over most of the run
+add(new THREE.Mesh(new THREE.TubeGeometry(path, 80, 0.035, 12, false), M.insul));
+// exposed copper stubs at both ends
+const stubGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.12, 12);
+const s1 = add(new THREE.Mesh(stubGeo, M.copper));
+s1.position.set(outC[0] - 0.40, 0.60, 0.45);
+// service valve caps
+const cap = add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.04, 12), M.copper));
+cap.position.set(outC[0] - 0.40, 0.64, 0.45);
+
+// ===== ground shadow catcher =====
+const ground = add(new THREE.Mesh(new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x0b0f15, roughness: 1 })), false, true);
+ground.rotation.x = -Math.PI / 2;
+
+// --- deterministic capture hook (Hard Rule 9) ---
+window.__cam = () => ({ pos: camera.position.toArray(), target: controls.target.toArray() });
+const camArg = new URLSearchParams(location.search).get('cam');
+if (camArg) {
+  const v = camArg.split(',').map(Number);
+  if (v.length === 6) { camera.position.set(v[0], v[1], v[2]); controls.target.set(v[3], v[4], v[5]); }
+}
+const spin = new URLSearchParams(location.search).get('spin') !== '0';
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (spin) spinner.rotation.z += dt * 6.0; // condenser fan turning
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+document.documentElement.setAttribute('data-app-ready', 'true');
+</script>
+</body>
+</html>

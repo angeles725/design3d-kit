@@ -1,0 +1,12 @@
+{
+  "name": "design3d-kit",
+  "private": true,
+  "type": "module",
+  "description": "design3d kit — pure-core library + harness. Library modules stay ZERO-dependency and Node-safe; puppeteer is an OPTIONAL harness-only dep for GR1's cheap real render (dynamic import in cheap-render.mjs, graceful fallback to soft-raster when absent). Tests run via node --test, no build step.",
+  "scripts": {
+    "test": "node --test 'tests/*.test.mjs' && node --test 'library/**/*.test.mjs'"
+  },
+  "optionalDependencies": {
+    "puppeteer": "^23.0.0"
+  }
+}
