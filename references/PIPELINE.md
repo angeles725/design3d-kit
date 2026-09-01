@@ -85,6 +85,11 @@ rigorous-lane signal.)
 
 The common path. No DesignSpec ceremony, no pass lock, no watchdog — those are rigorous-lane tools.
 
+**Read ONLY what the fast path needs.** This file's §1–§3, the active track's *§Generic defaults*,
+`library/INDEX.md`, and `LEARNINGS.md` §Active. Do NOT load `GATES.md`, `DESIGNSPEC.md`,
+`PROVENANCE-CONTRACT.md`, or the §4 DAG — those open only when you escalate to the RIGOROUS lane.
+Loading the whole kit up front is ~5 minutes you do not spend here (measured baseline).
+
 1. **Pin the intent (GR4).** One line: what the thing is, the track (threejs/blender), and whether
    "realista" means parametric geometry (not PBR-on-voxel). Real dimensions if the user gave them.
    Don't interrogate — state your reading and proceed.
