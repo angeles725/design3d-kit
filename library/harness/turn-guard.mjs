@@ -129,11 +129,13 @@ function sceneDepth(scene, h) {
  *
  * @param {{intent?:string, voxelSize?:number, source?:{objects:object[]}, built?:{objects:object[]}, objects?:object[]}} scene
  * @param {string|null} intent   The current turn's intent string.
- * @param {{budgetMs?:number}} [opts]
- * @returns {{ok:boolean, rails:{gr1,gr2,gr3,gr4}, elapsedMs:number, lookPng:Buffer}}
+ * @param {{budgetMs?:number, renderReal?:boolean, artifactPath?:string}} [opts]
+ *   renderReal: opt-in cheap WebGL capture (default false). Requires artifactPath.
+ *   artifactPath: absolute path to the HTML artifact for real-render.
+ * @returns {Promise<{ok:boolean, rails:{gr1,gr2,gr3,gr4}, elapsedMs:number, lookPng:Buffer, renderMode:'soft-raster'|'webgl', realImagePath?:string}>}
  */
 export async function runGuard(scene, intent, opts = {}) {
-  const { budgetMs = 30000 } = opts;
+  const { budgetMs = 30000, renderReal = false, artifactPath = null } = opts;
   const h = scene.voxelSize ?? 1;
   const D = sceneDepth(scene, h);
   const startTime = Date.now();
@@ -149,7 +151,23 @@ export async function runGuard(scene, intent, opts = {}) {
   const budgetOk = elapsedMs < budgetMs;
 
   const ok = gr1.ok && gr2.ok && gr3.ok && gr4.ok && budgetOk;
-  return { ok, rails: { gr1, gr2, gr3, gr4 }, elapsedMs, lookPng: gr1.lookPng };
+
+  // ---- Optional cheap real render (opt-in, graceful fallback) ------------------
+  // Default: soft-raster (instant). Real render only when renderReal=true AND
+  // artifactPath is given. Any error or unavailable tooling → silent fallback.
+  let renderMode = 'soft-raster';
+  let realImagePath;
+  if (renderReal && artifactPath) {
+    const { cheapRender } = await import('./cheap-render.mjs');
+    const rr = await cheapRender(artifactPath, { timeoutMs: 25000 });
+    renderMode = rr.renderMode;
+    if (rr.imagePath) realImagePath = rr.imagePath;
+  }
+
+  const gr1WithMode = { ...gr1, renderMode };
+  const result = { ok, rails: { gr1: gr1WithMode, gr2, gr3, gr4 }, elapsedMs, lookPng: gr1.lookPng, renderMode };
+  if (realImagePath) result.realImagePath = realImagePath;
+  return result;
 }
 
 // ---- CLI entrypoint ------------------------------------------------------------
