@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaporadora — Voxel Massing</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #06080d; overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    font: 12px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color: #cdd6df; background: rgba(6,8,13,.62); border: 1px solid #1c2530;
+    border-radius: 8px; padding: 10px 12px; max-width: 360px; pointer-events: none;
+  }
+  #hud h1 { margin: 0 0 4px; font-size: 13px; color: #7fe9dc; letter-spacing: .3px; }
+  #hud .sub { color: #8ea0ab; }
+  #hud .pass { color: #ffcf6b; }
+  #legend { position: fixed; top: 12px; right: 12px; z-index: 10;
+    font: 11px/1.5 ui-monospace, monospace; color: #cdd6df;
+    background: rgba(6,8,13,.62); border: 1px solid #1c2530; border-radius: 8px; padding: 8px 10px; }
+  #legend .row { display: flex; align-items: center; gap: 6px; }
+  #legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud">
+  <h1>EVAPORADORA — voxel massing</h1>
+  <div class="sub">industrial ceiling-hung unit cooler (walk-in evaporator)</div>
+  <div class="pass" id="passlabel">pass: blockout (voxel · 1 voxel = 0.05 m)</div>
+  <div class="sub" id="dims">casing 1.20×0.50×0.55 m · 2× axial fan Ø0.32 m</div>
+</div>
+<div id="legend"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// SCALE: 1 voxel = 0.05 m ; 1 world unit = 1 m
+const VS = 0.05;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080d);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 1000);
+camera.position.set(1.85, 1.25, 2.15);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.autoRotate = false;                 // OFF by default (gate captures need a settled frame)
+controls.target.set(0.0, 0.48, 0.0);
+
+// --- light rig (TRACK-THREEJS generic defaults) ---
+const key = new THREE.DirectionalLight(0xffffff, 1.5);
+key.position.set(2.6, 4.4, 3.0); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 16;
+key.shadow.camera.left = -4; key.shadow.camera.right = 4;
+key.shadow.camera.top = 4; key.shadow.camera.bottom = -4;
+scene.add(key);
+scene.add(new THREE.DirectionalLight(0x88aaff, 0.4).translateX(-3).translateY(2.5).translateZ(-2));
+const rim = new THREE.DirectionalLight(0x00d4aa, 0.2); rim.position.set(-2, 1.6, -3); scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xbcd0e0, 0x202830, 0.5));
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+// frontal fill so vertical painted faces don't read dark headless
+const frontFill = new THREE.DirectionalLight(0xffffff, 0.45); frontFill.position.set(0.2, 1.0, 4); scene.add(frontFill);
+
+// --- voxel builder: solid boxes rasterized to a voxel lattice, one InstancedMesh per color ---
+const buckets = new Map(); // colorHex -> array of [ix,iy,iz]
+function cellsOf(color){ let a = buckets.get(color); if(!a){ a=[]; buckets.set(color,a);} return a; }
+function fillBox(color, x0, y0, z0, w, h, d) {           // x0..d in METERS, rasterized to VS lattice
+  const nx = Math.max(1, Math.round(w / VS)), ny = Math.max(1, Math.round(h / VS)), nz = Math.max(1, Math.round(d / VS));
+  const bx = Math.round(x0 / VS), by = Math.round(y0 / VS), bz = Math.round(z0 / VS);
+  const arr = cellsOf(color);
+  for (let i=0;i<nx;i++) for (let j=0;j<ny;j++) for (let k=0;k<nz;k++) arr.push([bx+i, by+j, bz+k]);
+}
+function fillShell(color, x0, y0, z0, w, h, d) {          // hollow shell — keeps the blocky read, fewer cubes
+  const nx = Math.max(1, Math.round(w / VS)), ny = Math.max(1, Math.round(h / VS)), nz = Math.max(1, Math.round(d / VS));
+  const bx = Math.round(x0 / VS), by = Math.round(y0 / VS), bz = Math.round(z0 / VS);
+  const arr = cellsOf(color);
+  for (let i=0;i<nx;i++) for (let j=0;j<ny;j++) for (let k=0;k<nz;k++) {
+    if (i===0||i===nx-1||j===0||j===ny-1||k===0||k===nz-1) arr.push([bx+i, by+j, bz+k]);
+  }
+}
+const wc = (i) => (i + 0.5) * VS;                        // lattice index -> world center coordinate
+
+// Palette (flat voxel colors)
+const C = {
+  body:    0xc9ced3,   // painted galvanized casing
+  topCap:  0xd9dee2,   // top deck accent
+  fin:     0x9fb0bd,   // aluminium coil fins
+  grille:  0x2f363d,   // fan guard ring / spokes
+  blade:   0x6d7880,   // fan blades (animated group — flat voxel style)
+  tray:    0x767d84,   // drip / drain tray
+  copper:  0xb5762f,   // suction + liquid refrigerant lines
+  bracket: 0x24292e,   // hanger brackets + rods
+  plate:   0xe8ebed,   // nameplate
+  led:     0x18e06a,   // status LED (emissive)
+};
+
+// ---- Casing 1.20 x 0.50 x 0.55, front face toward +Z ----
+const CX0=-0.60, CY0=0.25, CZ0=-0.275, CW=1.20, CH=0.50, CD=0.55;
+fillShell(C.body, CX0, CY0, CZ0, CW, CH, CD);
+fillBox(C.topCap, CX0, CY0+CH-VS, CZ0, CW, VS, CD);      // lighter top deck
+
+// Fan geometry (front face plane)
+const FRONT_Z = CZ0 + CD - VS/2;                          // ~ front voxel-layer center world z
+const frontLayer = Math.round(CZ0/VS) + Math.round(CD/VS) - 1;  // lattice iz of front face
+const fans = [ { x:-0.30, y:0.50 }, { x:0.30, y:0.50 } ];
+const R_OPEN = 0.16, R_RING = 0.205;
+const planar = (ix,iy,f) => Math.hypot(wc(ix)-f.x, wc(iy)-f.y);
+
+// carve the two circular fan openings out of the front two layers of the casing body + top cap
+for (const color of [C.body, C.topCap]) {
+  const arr = buckets.get(color); if (!arr) continue;
+  buckets.set(color, arr.filter(([ix,iy,iz]) =>
+    !((iz===frontLayer || iz===frontLayer-1) && fans.some(f => planar(ix,iy,f) < R_OPEN))));
+}
+
+// grille ring + cross spokes on the front face
+{
+  const ixMin = Math.round(CX0/VS), ixMax = Math.round(CX0/VS)+Math.round(CW/VS)-1;
+  const iyMin = Math.round(CY0/VS), iyMax = Math.round(CY0/VS)+Math.round(CH/VS)-1;
+  const arr = cellsOf(C.grille);
+  for (let ix=ixMin; ix<=ixMax; ix++) for (let iy=iyMin; iy<=iyMax; iy++) {
+    for (const f of fans) {
+      const d = planar(ix,iy,f);
+      const onRing  = d >= R_OPEN && d <= R_RING;
+      const onSpoke = d < R_OPEN && (Math.abs(wc(ix)-f.x) < VS*0.6 || Math.abs(wc(iy)-f.y) < VS*0.6);
+      if (onRing || onSpoke) { arr.push([ix,iy,frontLayer]); break; }
+    }
+  }
+}
+
+// ---- Finned coil block on the back face (draw-through intake) ----
+for (let sx = -0.55; sx <= 0.55; sx += 0.06) {           // vertical aluminium fin stripes
+  fillBox(C.fin, sx, CY0+0.05, CZ0-0.025, 0.02, CH-0.10, 0.03);
+}
+
+// ---- Drip / drain tray (wider + deeper, hung under the casing) ----
+fillBox(C.tray, -0.65, 0.15, -0.30, 1.30, 0.10, 0.62);
+fillBox(C.copper, -0.42, 0.05, 0.02, 0.05, 0.12, 0.05);  // drain stub dropping from the tray
+
+// ---- Suction (thick) + liquid (thin) copper lines exiting the right side ----
+fillBox(C.copper, 0.60, 0.36, -0.12, 0.18, 0.08, 0.08);  // suction header on the right flank
+fillBox(C.copper, 0.72, 0.36, -0.12, 0.06, 0.34, 0.06);  // suction riser up
+fillBox(C.copper, 0.60, 0.30, 0.02, 0.14, 0.05, 0.05);   // liquid line (thinner) exit
+fillBox(C.copper, 0.68, 0.30, 0.02, 0.05, 0.24, 0.05);   // liquid riser up
+
+// ---- Hanger brackets + threaded rods on the top deck ----
+for (const bx of [-0.42, 0.42]) {
+  fillBox(C.bracket, bx-0.05, CY0+CH-VS, -0.18, 0.10, 0.06, 0.36); // bracket foot across depth
+  fillBox(C.bracket, bx-0.015, CY0+CH+0.01, -0.10, 0.03, 0.22, 0.03); // rod up
+}
+
+// ---- Nameplate + status LED on the front, between the fans ----
+fillBox(C.plate, -0.075, 0.55, FRONT_Z, 0.15, 0.08, 0.02);
+fillBox(C.led, 0.02, 0.66, FRONT_Z, VS, VS, VS);
+
+// ---- Emit one InstancedMesh per color ----
+const geo = new THREE.BoxGeometry(VS*0.94, VS*0.94, VS*0.94);   // slight gap = voxel-art seams
+const dummy = new THREE.Object3D();
+const matFor = (color) => {
+  if (color === C.led)    return new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.3, roughness: 0.4 });
+  if (color === C.copper) return new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.75 });
+  if (color === C.fin)    return new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.5 });
+  if (color === C.grille) return new THREE.MeshStandardMaterial({ color, roughness: 0.6,  metalness: 0.2 });
+  if (color === C.bracket)return new THREE.MeshStandardMaterial({ color, roughness: 0.6,  metalness: 0.3 });
+  if (color === C.tray)   return new THREE.MeshStandardMaterial({ color, roughness: 0.7,  metalness: 0.1 });
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.0 });     // painted sheet
+};
+const legendNames = { body:'casing', topCap:'top deck', fin:'coil fins', grille:'fan guard',
+  blade:'fan (spins)', tray:'drip tray', copper:'refrigerant lines', bracket:'hangers', plate:'nameplate', led:'status LED' };
+const nameByColor = Object.fromEntries(Object.entries(C).map(([k,v]) => [v, legendNames[k]]));
+const legendEl = document.getElementById('legend'); const seenLegend = new Set();
+const addLegend = (color, nm) => {
+  if (!nm || seenLegend.has(nm)) return; seenLegend.add(nm);
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<i style="background:#${color.toString(16).padStart(6,'0')}"></i>${nm}`;
+  legendEl.appendChild(row);
+};
+
+for (const [color, cells] of buckets) {
+  if (!cells.length) continue;
+  const im = new THREE.InstancedMesh(geo, matFor(color), cells.length);
+  im.castShadow = true; im.receiveShadow = true;
+  for (let n=0;n<cells.length;n++) {
+    const [ix,iy,iz] = cells[n];
+    dummy.position.set(wc(ix), wc(iy), wc(iz)); dummy.updateMatrix();
+    im.setMatrixAt(n, dummy.matrix);
+  }
+  im.instanceMatrix.needsUpdate = true;
+  scene.add(im);
+  addLegend(color, nameByColor[color]);
+}
+addLegend(C.blade, legendNames.blade);
+
+// ---- Animated axial fans: SEPARATE Groups outside the InstancedMesh (voxel rule) ----
+const bladeMat = new THREE.MeshStandardMaterial({ color: C.blade, roughness: 0.5, metalness: 0.25 });
+const hubMat   = new THREE.MeshStandardMaterial({ color: 0x3a4249, roughness: 0.6, metalness: 0.3 });
+const spinners = [];
+for (const f of fans) {
+  const g = new THREE.Group();
+  g.position.set(f.x, f.y, FRONT_Z - 0.02);
+  const hub = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.05), hubMat);
+  hub.castShadow = true; g.add(hub);
+  for (let b=0;b<4;b++) {                        // 4 chunky voxel-style blades
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.045, 0.02), bladeMat);
+    blade.position.set(0.08, 0, 0);
+    blade.rotation.z = 0.35;                      // pitch
+    const arm = new THREE.Group(); arm.rotation.z = b * Math.PI/2; arm.add(blade);
+    blade.castShadow = true; g.add(arm);
+  }
+  scene.add(g); spinners.push(g);
+}
+
+// ground plane (shadow catcher)
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x0b0f15, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+// --- deterministic capture hook (SKILL Hard Rule 9) ---
+window.__cam = () => ({ pos: camera.position.toArray(), target: controls.target.toArray() });
+const camArg = new URLSearchParams(location.search).get('cam');
+if (camArg) {
+  const v = camArg.split(',').map(Number);
+  if (v.length === 6) { camera.position.set(v[0],v[1],v[2]); controls.target.set(v[3],v[4],v[5]); }
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  for (const g of spinners) g.rotation.z += 0.18;   // fans turning
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+document.documentElement.setAttribute('data-app-ready', 'true');
+</script>
+</body>
+</html>

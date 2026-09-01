@@ -1,0 +1,27 @@
+{
+  "intent": "Voxel-art air-cooled HVAC condensing unit (condensadora) — three.js r160, 1u=1m voxel massing blockout; user reviews/approves before the PBR pass.",
+  "voxelSize": 0.1,
+  "units": "meters",
+  "note": "Horizontal box condensing unit: sheet-metal cabinet on a skid, condenser coil on both long faces, 2 top-discharge axial fans, scroll compressor + liquid receiver in the machine compartment (-X end, louvered), suction+discharge service valves and an electrical box on the machine end. AABBs below are the massing source of truth; the HTML voxel build occupies exactly these envelopes (GR3 anti-invention).",
+  "objects": [
+    { "id": "skid-base",        "center": [0.0, 0.075, 0.0],   "size": [2.40, 0.15, 1.20], "color": "#3a3f45" },
+    { "id": "coil-front",       "center": [0.0, 0.68, 0.55],   "size": [2.00, 1.00, 0.10], "color": "#7f97a6" },
+    { "id": "coil-back",        "center": [0.0, 0.68, -0.55],  "size": [2.00, 1.00, 0.10], "color": "#7f97a6" },
+    { "id": "end-machine",      "center": [-1.10, 0.68, 0.0],  "size": [0.20, 1.00, 1.20], "color": "#b7bcc1" },
+    { "id": "end-access",       "center": [1.10, 0.68, 0.0],   "size": [0.20, 1.00, 1.20], "color": "#b7bcc1" },
+    { "id": "top-deck",         "center": [0.0, 1.20, 0.0],    "size": [2.40, 0.10, 1.20], "color": "#a7adb3" },
+    { "id": "fan-shroud-1",     "center": [-0.55, 1.30, 0.0],  "size": [0.98, 0.12, 0.98], "color": "#4a4f56" },
+    { "id": "fan-shroud-2",     "center": [0.55, 1.30, 0.0],   "size": [0.98, 0.12, 0.98], "color": "#4a4f56" },
+    { "id": "fan-blades-1",     "center": [-0.55, 1.31, 0.0],  "size": [0.86, 0.10, 0.86], "color": "#20242a" },
+    { "id": "fan-blades-2",     "center": [0.55, 1.31, 0.0],   "size": [0.86, 0.10, 0.86], "color": "#20242a" },
+    { "id": "compressor-scroll","center": [-0.78, 0.52, 0.10], "size": [0.55, 0.72, 0.55], "color": "#2f3439" },
+    { "id": "liquid-receiver",  "center": [-0.78, 0.34, -0.32],"size": [0.55, 0.30, 0.30], "color": "#5a6069" },
+    { "id": "suction-valve",    "center": [-1.24, 0.62, 0.32], "size": [0.14, 0.72, 0.14], "color": "#b98a34" },
+    { "id": "discharge-valve",  "center": [-1.24, 0.55, -0.30],"size": [0.12, 0.58, 0.12], "color": "#b5713f" },
+    { "id": "electrical-box",   "center": [-0.45, 0.86, 0.62], "size": [0.44, 0.50, 0.12], "color": "#6b7078" },
+    { "id": "foot-nw",          "center": [-1.10, 0.05, 0.52], "size": [0.14, 0.10, 0.14], "color": "#2b2f34" },
+    { "id": "foot-ne",          "center": [1.10, 0.05, 0.52],  "size": [0.14, 0.10, 0.14], "color": "#2b2f34" },
+    { "id": "foot-sw",          "center": [-1.10, 0.05, -0.52],"size": [0.14, 0.10, 0.14], "color": "#2b2f34" },
+    { "id": "foot-se",          "center": [1.10, 0.05, -0.52], "size": [0.14, 0.10, 0.14], "color": "#2b2f34" }
+  ]
+}

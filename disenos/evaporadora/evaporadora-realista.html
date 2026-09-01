@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaporadora — Realista PBR</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #06080d; overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    font: 12px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color: #cdd6df; background: rgba(6,8,13,.62); border: 1px solid #1c2530;
+    border-radius: 8px; padding: 10px 12px; max-width: 380px; pointer-events: none;
+  }
+  #hud h1 { margin: 0 0 4px; font-size: 13px; color: #7fe9dc; letter-spacing: .3px; }
+  #hud .sub { color: #8ea0ab; }
+  #hud .pass { color: #ffcf6b; }
+  #legend { position: fixed; top: 12px; right: 12px; z-index: 10;
+    font: 11px/1.5 ui-monospace, monospace; color: #cdd6df;
+    background: rgba(6,8,13,.62); border: 1px solid #1c2530; border-radius: 8px; padding: 8px 10px; }
+  #legend .row { display: flex; align-items: center; gap: 6px; }
+  #legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud">
+  <h1>EVAPORADORA — realista (parametric PBR)</h1>
+  <div class="sub">industrial ceiling-hung unit cooler · 2× axial discharge fan + exposed finned coil</div>
+  <div class="pass" id="passlabel">pass: realista · sheet-metal shell · aluminium-fin coil + copper U-tubes · swept refrigerant lines</div>
+  <div class="sub">casing 1.20×0.50×0.55 m · 2× fan Ø0.32 m · geometry, NOT PBR-on-voxel · 1u = 1 m</div>
+</div>
+<div id="legend"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// 1 world unit = 1 m. Realista translates the approved VOXEL massing (dimensional source of truth).
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;      // baked shadows: one bake on the first frame, then frozen
+renderer.shadowMap.needsUpdate = true;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080d);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+// --- hero camera: front-right 3/4, low, so the two big fans dominate and the coil edge + copper flank read ---
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 1000);
+camera.position.set(1.62, 0.98, 1.78);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.autoRotate = false;
+controls.target.set(0.0, 0.47, -0.02);
+
+// --- light rig (TRACK-THREEJS generic defaults) ---
+const key = new THREE.DirectionalLight(0xffffff, 1.55);
+key.position.set(2.8, 4.6, 3.2); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 18;
+key.shadow.camera.left = -4; key.shadow.camera.right = 4;
+key.shadow.camera.top = 4; key.shadow.camera.bottom = -4;
+key.shadow.bias = -0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xbcd0ff, 0.45); fill.position.set(-3, 3, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0x00d4aa, 0.22); rim.position.set(-2, 2.2, -4); scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xcde0ee, 0x20272f, 0.5));
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+const frontFill = new THREE.DirectionalLight(0xffffff, 0.4); frontFill.position.set(0.2, 1.0, 4); scene.add(frontFill);
+
+// --- procedural CanvasTexture (no image files): value-noise roughness/wear map ---
+function noiseTex(size, base, varr, scale) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  // deterministic value noise (hash + smoothstep bilerp), fbm 3 octaves
+  const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; };
+  const sstep = t => t * t * (3 - 2 * t);
+  const vnoise = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const a = hash(xi, yi), b = hash(xi + 1, yi), cc = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    const u = sstep(xf), v = sstep(yf);
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + cc * (1 - u) * v + d * u * v;
+  };
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let f = 0, amp = 0.5, fr = scale / size;
+    for (let o = 0; o < 3; o++) { f += amp * vnoise(x * fr, y * fr); amp *= 0.5; fr *= 2.03; }
+    const val = Math.max(0, Math.min(1, base + (f - 0.5) * 2 * varr));
+    const px = (y * size + x) * 4; const g = (val * 255) | 0;
+    img.data[px] = g; img.data[px + 1] = g; img.data[px + 2] = g; img.data[px + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+// brushed-metal roughness map: fine horizontal streaks for galvanized/aluminium flanks
+function brushedTex(size, base, varr) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = `rgb(${(base*255)|0},${(base*255)|0},${(base*255)|0})`; ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < size * 5; i++) {
+    const y = Math.random() * size, len = 20 + Math.random() * size, x = Math.random() * size;
+    const g = Math.max(0, Math.min(255, ((base + (Math.random() - 0.5) * 2 * varr) * 255) | 0));
+    ctx.strokeStyle = `rgba(${g},${g},${g},0.35)`; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + len, y + (Math.random() - 0.5) * 1.5); ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+const paintRough = noiseTex(256, 0.52, 0.10, 40); paintRough.repeat.set(3, 2);
+const aluRough   = brushedTex(256, 0.42, 0.14); aluRough.repeat.set(1, 4);
+const galvRough  = brushedTex(256, 0.38, 0.16); galvRough.repeat.set(2, 2);
+const copperRough= noiseTex(128, 0.34, 0.08, 26); copperRough.repeat.set(2, 3);
+
+// --- material families ---
+const M = {
+  // painted galvanized sheet-metal shell = dielectric + clearcoat (never metalness>0 for paint)
+  paint:   new THREE.MeshPhysicalMaterial({ color: 0xe7ebee, metalness: 0.0, roughness: 1.0, roughnessMap: paintRough, clearcoat: 0.85, clearcoatRoughness: 0.16, envMapIntensity: 1.0 }),
+  paintEnd:new THREE.MeshPhysicalMaterial({ color: 0xd2d8dd, metalness: 0.0, roughness: 1.0, roughnessMap: paintRough, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 0.9 }),
+  galv:    new THREE.MeshStandardMaterial({ color: 0xb9c1c8, metalness: 0.9, roughness: 1.0, roughnessMap: galvRough, envMapIntensity: 1.6 }), // galvanized bare steel
+  alu:     new THREE.MeshStandardMaterial({ color: 0xc7cdd2, metalness: 0.9, roughness: 1.0, roughnessMap: aluRough, envMapIntensity: 1.7 }),  // aluminium coil fins
+  copper:  new THREE.MeshStandardMaterial({ color: 0xc27a3e, metalness: 1.0, roughness: 1.0, roughnessMap: copperRough, envMapIntensity: 1.9 }),
+  grille:  new THREE.MeshStandardMaterial({ color: 0x2b333a, metalness: 0.85, roughness: 0.42, envMapIntensity: 1.4 }), // fan guard wire + venturi
+  blade:   new THREE.MeshStandardMaterial({ color: 0x9aa4ad, metalness: 0.55, roughness: 0.42, envMapIntensity: 1.3 }),
+  darkrec: new THREE.MeshStandardMaterial({ color: 0x0a0d11, metalness: 0.3, roughness: 0.8 }),   // venturi throat shadow
+  tray:    new THREE.MeshStandardMaterial({ color: 0xaab2b9, metalness: 0.7, roughness: 0.5, roughnessMap: galvRough, envMapIntensity: 1.2 }),
+  bracket: new THREE.MeshStandardMaterial({ color: 0x596069, metalness: 0.85, roughness: 0.5, envMapIntensity: 1.2 }),
+  rod:     new THREE.MeshStandardMaterial({ color: 0x777f88, metalness: 0.9, roughness: 0.4, envMapIntensity: 1.3 }),
+  plate:   new THREE.MeshStandardMaterial({ color: 0xe8ebed, metalness: 0.6, roughness: 0.35, envMapIntensity: 1.4 }),
+  led:     new THREE.MeshStandardMaterial({ color: 0x18e06a, emissive: 0x18e06a, emissiveIntensity: 1.4, roughness: 0.4 }),
+};
+
+function add(mesh, cast = true, recv = true) { mesh.castShadow = cast; mesh.receiveShadow = recv; scene.add(mesh); return mesh; }
+
+// ================= CASING — sheet-metal shell 1.20 x 0.50 x 0.55, front toward +Z =================
+const unit = new THREE.Group(); scene.add(unit);
+const CX = 0, CY = 0.50, CZ = 0, CW = 1.20, CH = 0.50, CD = 0.55;
+const FRONT = CZ + CD / 2, BACK = CZ - CD / 2;
+const shell = new THREE.Mesh(new RoundedBoxGeometry(CW, CH, CD, 2, 0.022), M.paint);
+shell.position.set(CX, CY, CZ); shell.castShadow = true; shell.receiveShadow = true; unit.add(shell);
+// galvanized end caps (left/right) — differentiate flanks, read as bolted sheet-metal panels
+for (const sx of [-1, 1]) {
+  const cap = new THREE.Mesh(new RoundedBoxGeometry(0.02, CH * 0.98, CD * 0.98, 2, 0.014), M.paintEnd);
+  cap.position.set(CX + sx * (CW / 2 - 0.006), CY, CZ); cap.castShadow = true; unit.add(cap);
+}
+// top deck accent strip (galvanized)
+const deck = new THREE.Mesh(new THREE.BoxGeometry(CW * 0.98, 0.02, CD * 0.9), M.galv);
+deck.position.set(CX, CY + CH / 2 - 0.005, CZ); add(deck); unit.add(deck);
+
+// ================= 2 AXIAL DISCHARGE FANS Ø0.32 on the +Z front face =================
+const R = 0.15;                       // blade tip radius (fan Ø0.32 incl. bell mouth ~0.21 half-width)
+const fans = [{ x: -0.30 }, { x: 0.30 }];
+const spinners = [];
+// one shared curved (scimitar) blade geometry, authored in the disc plane (radial +X, chord Y, thin Z)
+function makeBladeGeo() {
+  const s = new THREE.Shape();
+  s.moveTo(0.028, -0.018);
+  s.quadraticCurveTo(0.075, -0.055, 0.130, -0.030);
+  s.quadraticCurveTo(0.150, -0.010, 0.150, 0.014);
+  s.quadraticCurveTo(0.120, 0.052, 0.070, 0.048);
+  s.quadraticCurveTo(0.040, 0.040, 0.028, 0.020);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.006, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.004, bevelThickness: 0.004, steps: 1 });
+  g.translate(0, 0, -0.003);
+  return g;
+}
+const bladeGeo = makeBladeGeo();
+for (const f of fans) {
+  const g = new THREE.Group(); g.position.set(f.x, CY, FRONT - 0.03); unit.add(g);
+  // recessed dark venturi throat (reads as the fan opening carved in the casing)
+  const throat = new THREE.Mesh(new THREE.CircleGeometry(R + 0.03, 40), M.darkrec);
+  throat.position.set(0, 0, -0.028); g.add(throat);
+  // flared venturi bell mouth (open cone), axis along Z
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.055, R + 0.02, 0.07, 40, 1, true), M.galv);
+  bell.rotation.x = Math.PI / 2; bell.position.set(0, 0, 0.005); bell.castShadow = true; g.add(bell);
+  // rotor: hub + 5 curved blades (pitched out of the disc plane)
+  const spin = new THREE.Group(); g.add(spin);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 0.055, 20), M.grille);
+  hub.rotation.x = Math.PI / 2; hub.position.z = 0.01; spin.add(hub);
+  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(0.033, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), M.grille);
+  noseCap.rotation.x = -Math.PI / 2; noseCap.position.z = 0.037; spin.add(noseCap);
+  for (let i = 0; i < 5; i++) {
+    const blade = new THREE.Mesh(bladeGeo, M.blade);
+    blade.rotation.x = 0.42;                 // aerodynamic pitch (chord tilts out of the disc)
+    blade.castShadow = true;
+    const arm = new THREE.Group(); arm.rotation.z = (i / 5) * Math.PI * 2; arm.add(blade); spin.add(arm);
+  }
+  spinners.push(spin);
+  // wire guard grille: 3 concentric torus rings + 8 radial spokes, proud of the blades (+Z)
+  const guard = new THREE.Group(); guard.position.set(0, 0, 0.045); g.add(guard);
+  for (const rr of [R * 0.34, R * 0.64, R * 0.95, R + 0.028]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.0045, 6, 44), M.grille);
+    guard.add(ring);
+  }
+  for (let i = 0; i < 8; i++) {
+    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, (R + 0.03) * 2, 6), M.grille);
+    spoke.rotation.z = (i / 8) * Math.PI; guard.add(spoke);
+  }
+}
+
+// ================= EXPOSED FINNED COIL BLOCK on the intake (-Z) face =================
+// aluminium fins as ONE InstancedMesh (vertical thin plates), + copper serpentine U-tubes threading them.
+const coil = new THREE.Group(); scene.add(coil);
+const COIL_Z = BACK - 0.015, COIL_W = 1.16, COIL_H = 0.40, COIL_D = 0.075;
+const finCount = 40, finGeo = new THREE.BoxGeometry(0.0022, COIL_H, COIL_D);
+const fins = new THREE.InstancedMesh(finGeo, M.alu, finCount);
+fins.castShadow = true; fins.receiveShadow = true;
+const dummy = new THREE.Object3D();
+for (let i = 0; i < finCount; i++) {
+  const x = -COIL_W / 2 + (i + 0.5) * (COIL_W / finCount);
+  dummy.position.set(x, CY, COIL_Z); dummy.updateMatrix(); fins.setMatrixAt(i, dummy.matrix);
+}
+fins.instanceMatrix.needsUpdate = true; coil.add(fins);
+// coil end plates (tube sheets) — galvanized frame around the fin block
+for (const sx of [-1, 1]) {
+  const ep = new THREE.Mesh(new THREE.BoxGeometry(0.012, COIL_H + 0.02, COIL_D + 0.01), M.galv);
+  ep.position.set(sx * (COIL_W / 2 + 0.006), CY, COIL_Z); add(ep); coil.add(ep);
+}
+// copper serpentine: horizontal tubes across the width at several rows + U-return bends alternating ends
+const rowYs = [CY - 0.15, CY - 0.075, CY, CY + 0.075, CY + 0.15];
+const tubeZ = [COIL_Z - 0.02, COIL_Z + 0.02];
+const tubeGeoLen = new THREE.CylinderGeometry(0.009, 0.009, COIL_W - 0.02, 12);
+for (let r = 0; r < rowYs.length; r++) {
+  for (let p = 0; p < tubeZ.length; p++) {
+    const t = new THREE.Mesh(tubeGeoLen, M.copper);
+    t.rotation.z = Math.PI / 2; t.position.set(CX, rowYs[r], tubeZ[p]); add(t, true, false); coil.add(t);
+  }
+  // U-bend joining the two depth passes of this row, at alternating ends
+  const endX = (r % 2 === 0 ? 1 : -1) * (COIL_W / 2 - 0.01);
+  const u = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.009, 10, 20, Math.PI), M.copper);
+  u.rotation.y = Math.PI / 2; u.rotation.z = (r % 2 === 0 ? 0 : Math.PI);
+  u.position.set(endX, rowYs[r], COIL_Z); add(u, true, false); coil.add(u);
+}
+// vertical return risers linking adjacent rows on the left header side (serpentine continuity)
+for (let r = 0; r < rowYs.length - 1; r++) {
+  const side = (r % 2 === 0 ? -1 : 1) * (COIL_W / 2 - 0.01);
+  const riser = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.075, 12), M.copper);
+  riser.position.set(side, (rowYs[r] + rowYs[r + 1]) / 2, COIL_Z - 0.02); add(riser, true, false); coil.add(riser);
+}
+
+// ================= COPPER SUCTION (thick) + LIQUID (thin) LINES exiting the right flank =================
+// swept over CatmullRom curves — no blocky/staircased look. Rise from the coil right header, up the top.
+const suctionPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(COIL_W / 2 - 0.01, CY - 0.12, COIL_Z - 0.02),
+  new THREE.Vector3(0.66, CY - 0.05, -0.12),
+  new THREE.Vector3(0.71, CY, -0.10),
+  new THREE.Vector3(0.72, CY + 0.14, -0.06),
+  new THREE.Vector3(0.72, CY + 0.20, 0.02),
+]);
+add(new THREE.Mesh(new THREE.TubeGeometry(suctionPath, 60, 0.019, 14, false), M.copper), true, false);
+const liquidPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(COIL_W / 2 - 0.01, CY - 0.05, COIL_Z + 0.02),
+  new THREE.Vector3(0.64, CY - 0.06, 0.0),
+  new THREE.Vector3(0.68, CY, 0.02),
+  new THREE.Vector3(0.68, CY + 0.10, 0.04),
+  new THREE.Vector3(0.68, CY + 0.16, 0.05),
+]);
+add(new THREE.Mesh(new THREE.TubeGeometry(liquidPath, 60, 0.010, 12, false), M.copper), true, false);
+// service-valve stubs at the tops of both risers
+for (const [x, z, rad] of [[0.72, 0.02, 0.021], [0.68, 0.05, 0.014]]) {
+  const v = add(new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, 0.04, 12), M.copper), true, false);
+  v.position.set(x, CY + 0.22, z);
+}
+
+// ================= DRIP / DRAIN TRAY hung under the casing =================
+const tray = new THREE.Mesh(new RoundedBoxGeometry(1.30, 0.10, 0.62, 2, 0.02), M.tray);
+tray.position.set(0.0, 0.20, 0.01); tray.castShadow = true; tray.receiveShadow = true; scene.add(tray);
+// drain stub dropping from the tray
+const drain = add(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.14, 14), M.copper), true, false);
+drain.position.set(-0.42, 0.10, 0.02);
+
+// ================= HANGER BRACKETS + THREADED RODS (ceiling-hung) =================
+const ceilY = 1.00;
+const ceiling = add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.04, 0.7),
+  new THREE.MeshStandardMaterial({ color: 0x141a20, roughness: 0.95 })), false, true);
+ceiling.position.set(0, ceilY + 0.02, -0.05);
+for (const bx of [-0.42, 0.42]) {
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 0.36), M.bracket);
+  foot.position.set(bx, CY + CH / 2 + 0.005, -0.10); add(foot); unit.add(foot);
+  for (const rz of [-0.16, 0.14]) {
+    const rod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, ceilY - (CY + CH / 2), 10), M.rod));
+    rod.position.set(bx, (CY + CH / 2 + ceilY) / 2, -0.10 + rz);
+  }
+}
+
+// ================= NAMEPLATE + STATUS LED on the front, between the fans =================
+const plate = add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.006), M.plate));
+plate.position.set(0.0, 0.55, FRONT + 0.004);
+const led = add(new THREE.Mesh(new THREE.SphereGeometry(0.011, 12, 10), M.led));
+led.position.set(0.075, 0.60, FRONT + 0.01);
+const ledLight = new THREE.PointLight(0x18e06a, 0.5, 0.5); ledLight.position.copy(led.position); scene.add(ledLight);
+
+// ================= ground shadow catcher =================
+const ground = add(new THREE.Mesh(new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x0b0f15, roughness: 1 })), false, true);
+ground.rotation.x = -Math.PI / 2;
+
+// ---- legend ----
+const legendEl = document.getElementById('legend');
+const legend = [['#e7ebee','painted casing'],['#b9c1c8','galvanized steel'],['#c7cdd2','aluminium coil fins'],
+  ['#c27a3e','copper tubes / lines'],['#2b333a','fan guard'],['#9aa4ad','fan blades'],['#18e06a','status LED']];
+for (const [c, n] of legend) { const r = document.createElement('div'); r.className = 'row'; r.innerHTML = `<i style="background:${c}"></i>${n}`; legendEl.appendChild(r); }
+
+// --- deterministic capture hook (SKILL Hard Rule 9) ---
+window.__cam = () => ({ pos: camera.position.toArray(), target: controls.target.toArray() });
+const camArg = new URLSearchParams(location.search).get('cam');
+if (camArg) { const v = camArg.split(',').map(Number); if (v.length === 6) { camera.position.set(v[0],v[1],v[2]); controls.target.set(v[3],v[4],v[5]); } }
+const spin = new URLSearchParams(location.search).get('spin') !== '0';
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+let baked = false;
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (spin) for (const s of spinners) s.rotation.z += dt * 5.0;   // fans turning
+  controls.update();
+  renderer.render(scene, camera);
+  if (!baked) { renderer.shadowMap.needsUpdate = false; baked = true; }  // freeze the shadow bake after frame 1
+});
+
+document.documentElement.setAttribute('data-app-ready', 'true');
+</script>
+</body>
+</html>

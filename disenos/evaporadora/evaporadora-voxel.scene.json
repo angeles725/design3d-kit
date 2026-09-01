@@ -1,0 +1,15 @@
+{
+  "intent": "VOXEL evaporadora — industrial ceiling-hung unit cooler (walk-in cold-room evaporator); three r160 standalone HTML; 1u=1m; voxel massing is the dimensional source of truth; the realista/PBR pass is deferred until the user approves the voxel. Real dims: casing 1.20x0.50x0.55 m, 2x axial discharge fan Ø0.32 m, finned coil block on the intake face, drip tray, suction+liquid copper lines.",
+  "voxelSize": 0.05,
+  "objects": [
+    { "id": "casing",       "center": [0.00, 0.50, 0.00],  "size": [1.20, 0.50, 0.55] },
+    { "id": "drip-tray",    "center": [0.00, 0.20, 0.01],  "size": [1.30, 0.10, 0.62] },
+    { "id": "fan-guard-L",  "center": [-0.30, 0.50, 0.28], "size": [0.42, 0.42, 0.06] },
+    { "id": "fan-guard-R",  "center": [0.30, 0.50, 0.28],  "size": [0.42, 0.42, 0.06] },
+    { "id": "coil-fins",    "center": [0.00, 0.50, -0.29], "size": [1.16, 0.40, 0.05] },
+    { "id": "suction-line", "center": [0.71, 0.47, -0.10], "size": [0.10, 0.42, 0.08] },
+    { "id": "liquid-line",  "center": [0.68, 0.42, 0.02],  "size": [0.08, 0.34, 0.05] },
+    { "id": "hangers",      "center": [0.00, 0.83, -0.10], "size": [0.94, 0.28, 0.36] },
+    { "id": "nameplate",    "center": [0.00, 0.55, 0.27],  "size": [0.15, 0.08, 0.02] }
+  ]
+}

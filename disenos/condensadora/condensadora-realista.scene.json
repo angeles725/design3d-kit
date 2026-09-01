@@ -1,0 +1,755 @@
+{
+  "intent": "REALISTA condensadora — air-cooled condensing unit; three r160 standalone HTML; 1u=1m; realista = parametric geometry, NOT PBR-on-voxel. TRANSLATES the approved VOXEL as the dimensional source of truth (voxel is truth; realista preserves its cotas, never re-invents). Reuses 5 library sub-assembly parts (finned-coil, fan-assembly, electrical-box, fastener-kit, refrig-cluster-adapted). Every added part is a SUB-PART INSIDE a preserved massing AABB, so GR3 drift stays ~0. Real dims: cabinet 2.40x1.50x1.20 m on a skid, condenser coil on both long faces, 2x top-discharge axial fan Ø0.86 m, scroll compressor + liquid receiver + suction/discharge service valves in the machine end, controls box.",
+  "voxelSize": 0.1,
+  "source": {
+    "objects": [
+      {
+        "id": "skid-base",
+        "center": [
+          0,
+          0.075,
+          0
+        ],
+        "size": [
+          2.4,
+          0.15,
+          1.2
+        ]
+      },
+      {
+        "id": "coil-front",
+        "center": [
+          0,
+          0.68,
+          0.55
+        ],
+        "size": [
+          2,
+          1,
+          0.1
+        ]
+      },
+      {
+        "id": "coil-back",
+        "center": [
+          0,
+          0.68,
+          -0.55
+        ],
+        "size": [
+          2,
+          1,
+          0.1
+        ]
+      },
+      {
+        "id": "end-machine",
+        "center": [
+          -1.1,
+          0.68,
+          0
+        ],
+        "size": [
+          0.2,
+          1,
+          1.2
+        ]
+      },
+      {
+        "id": "end-access",
+        "center": [
+          1.1,
+          0.68,
+          0
+        ],
+        "size": [
+          0.2,
+          1,
+          1.2
+        ]
+      },
+      {
+        "id": "top-deck",
+        "center": [
+          0,
+          1.2,
+          0
+        ],
+        "size": [
+          2.4,
+          0.1,
+          1.2
+        ]
+      },
+      {
+        "id": "fan-shroud-1",
+        "center": [
+          -0.55,
+          1.3,
+          0
+        ],
+        "size": [
+          0.98,
+          0.12,
+          0.98
+        ]
+      },
+      {
+        "id": "fan-shroud-2",
+        "center": [
+          0.55,
+          1.3,
+          0
+        ],
+        "size": [
+          0.98,
+          0.12,
+          0.98
+        ]
+      },
+      {
+        "id": "fan-blades-1",
+        "center": [
+          -0.55,
+          1.31,
+          0
+        ],
+        "size": [
+          0.86,
+          0.1,
+          0.86
+        ]
+      },
+      {
+        "id": "fan-blades-2",
+        "center": [
+          0.55,
+          1.31,
+          0
+        ],
+        "size": [
+          0.86,
+          0.1,
+          0.86
+        ]
+      },
+      {
+        "id": "compressor-scroll",
+        "center": [
+          -0.78,
+          0.52,
+          0.1
+        ],
+        "size": [
+          0.55,
+          0.72,
+          0.55
+        ]
+      },
+      {
+        "id": "liquid-receiver",
+        "center": [
+          -0.78,
+          0.34,
+          -0.32
+        ],
+        "size": [
+          0.55,
+          0.3,
+          0.3
+        ]
+      },
+      {
+        "id": "suction-valve",
+        "center": [
+          -1.24,
+          0.62,
+          0.32
+        ],
+        "size": [
+          0.14,
+          0.72,
+          0.14
+        ]
+      },
+      {
+        "id": "discharge-valve",
+        "center": [
+          -1.24,
+          0.55,
+          -0.3
+        ],
+        "size": [
+          0.12,
+          0.58,
+          0.12
+        ]
+      },
+      {
+        "id": "electrical-box",
+        "center": [
+          -0.45,
+          0.86,
+          0.62
+        ],
+        "size": [
+          0.44,
+          0.5,
+          0.12
+        ]
+      },
+      {
+        "id": "foot-nw",
+        "center": [
+          -1.1,
+          0.05,
+          0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      },
+      {
+        "id": "foot-ne",
+        "center": [
+          1.1,
+          0.05,
+          0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      },
+      {
+        "id": "foot-sw",
+        "center": [
+          -1.1,
+          0.05,
+          -0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      },
+      {
+        "id": "foot-se",
+        "center": [
+          1.1,
+          0.05,
+          -0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      }
+    ]
+  },
+  "built": {
+    "objects": [
+      {
+        "id": "skid-base",
+        "center": [
+          0,
+          0.075,
+          0
+        ],
+        "size": [
+          2.4,
+          0.15,
+          1.2
+        ]
+      },
+      {
+        "id": "coil-front",
+        "center": [
+          0,
+          0.68,
+          0.55
+        ],
+        "size": [
+          2,
+          1,
+          0.1
+        ]
+      },
+      {
+        "id": "coil-back",
+        "center": [
+          0,
+          0.68,
+          -0.55
+        ],
+        "size": [
+          2,
+          1,
+          0.1
+        ]
+      },
+      {
+        "id": "end-machine",
+        "center": [
+          -1.1,
+          0.68,
+          0
+        ],
+        "size": [
+          0.2,
+          1,
+          1.2
+        ]
+      },
+      {
+        "id": "end-access",
+        "center": [
+          1.1,
+          0.68,
+          0
+        ],
+        "size": [
+          0.2,
+          1,
+          1.2
+        ]
+      },
+      {
+        "id": "top-deck",
+        "center": [
+          0,
+          1.2,
+          0
+        ],
+        "size": [
+          2.4,
+          0.1,
+          1.2
+        ]
+      },
+      {
+        "id": "fan-shroud-1",
+        "center": [
+          -0.55,
+          1.3,
+          0
+        ],
+        "size": [
+          0.98,
+          0.12,
+          0.98
+        ]
+      },
+      {
+        "id": "fan-shroud-2",
+        "center": [
+          0.55,
+          1.3,
+          0
+        ],
+        "size": [
+          0.98,
+          0.12,
+          0.98
+        ]
+      },
+      {
+        "id": "fan-blades-1",
+        "center": [
+          -0.55,
+          1.31,
+          0
+        ],
+        "size": [
+          0.86,
+          0.1,
+          0.86
+        ]
+      },
+      {
+        "id": "fan-blades-2",
+        "center": [
+          0.55,
+          1.31,
+          0
+        ],
+        "size": [
+          0.86,
+          0.1,
+          0.86
+        ]
+      },
+      {
+        "id": "compressor-scroll",
+        "center": [
+          -0.78,
+          0.52,
+          0.1
+        ],
+        "size": [
+          0.55,
+          0.72,
+          0.55
+        ]
+      },
+      {
+        "id": "liquid-receiver",
+        "center": [
+          -0.78,
+          0.34,
+          -0.32
+        ],
+        "size": [
+          0.55,
+          0.3,
+          0.3
+        ]
+      },
+      {
+        "id": "suction-valve",
+        "center": [
+          -1.24,
+          0.62,
+          0.32
+        ],
+        "size": [
+          0.14,
+          0.72,
+          0.14
+        ]
+      },
+      {
+        "id": "discharge-valve",
+        "center": [
+          -1.24,
+          0.55,
+          -0.3
+        ],
+        "size": [
+          0.12,
+          0.58,
+          0.12
+        ]
+      },
+      {
+        "id": "electrical-box",
+        "center": [
+          -0.45,
+          0.86,
+          0.62
+        ],
+        "size": [
+          0.44,
+          0.5,
+          0.12
+        ]
+      },
+      {
+        "id": "foot-nw",
+        "center": [
+          -1.1,
+          0.05,
+          0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      },
+      {
+        "id": "foot-ne",
+        "center": [
+          1.1,
+          0.05,
+          0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      },
+      {
+        "id": "foot-sw",
+        "center": [
+          -1.1,
+          0.05,
+          -0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      },
+      {
+        "id": "foot-se",
+        "center": [
+          1.1,
+          0.05,
+          -0.52
+        ],
+        "size": [
+          0.14,
+          0.1,
+          0.14
+        ]
+      }
+    ]
+  },
+  "objects": [
+    {
+      "id": "skid-base",
+      "center": [
+        0,
+        0.075,
+        0
+      ],
+      "size": [
+        2.4,
+        0.15,
+        1.2
+      ]
+    },
+    {
+      "id": "coil-front",
+      "center": [
+        0,
+        0.68,
+        0.55
+      ],
+      "size": [
+        2,
+        1,
+        0.1
+      ]
+    },
+    {
+      "id": "coil-back",
+      "center": [
+        0,
+        0.68,
+        -0.55
+      ],
+      "size": [
+        2,
+        1,
+        0.1
+      ]
+    },
+    {
+      "id": "end-machine",
+      "center": [
+        -1.1,
+        0.68,
+        0
+      ],
+      "size": [
+        0.2,
+        1,
+        1.2
+      ]
+    },
+    {
+      "id": "end-access",
+      "center": [
+        1.1,
+        0.68,
+        0
+      ],
+      "size": [
+        0.2,
+        1,
+        1.2
+      ]
+    },
+    {
+      "id": "top-deck",
+      "center": [
+        0,
+        1.2,
+        0
+      ],
+      "size": [
+        2.4,
+        0.1,
+        1.2
+      ]
+    },
+    {
+      "id": "fan-shroud-1",
+      "center": [
+        -0.55,
+        1.3,
+        0
+      ],
+      "size": [
+        0.98,
+        0.12,
+        0.98
+      ]
+    },
+    {
+      "id": "fan-shroud-2",
+      "center": [
+        0.55,
+        1.3,
+        0
+      ],
+      "size": [
+        0.98,
+        0.12,
+        0.98
+      ]
+    },
+    {
+      "id": "fan-blades-1",
+      "center": [
+        -0.55,
+        1.31,
+        0
+      ],
+      "size": [
+        0.86,
+        0.1,
+        0.86
+      ]
+    },
+    {
+      "id": "fan-blades-2",
+      "center": [
+        0.55,
+        1.31,
+        0
+      ],
+      "size": [
+        0.86,
+        0.1,
+        0.86
+      ]
+    },
+    {
+      "id": "compressor-scroll",
+      "center": [
+        -0.78,
+        0.52,
+        0.1
+      ],
+      "size": [
+        0.55,
+        0.72,
+        0.55
+      ]
+    },
+    {
+      "id": "liquid-receiver",
+      "center": [
+        -0.78,
+        0.34,
+        -0.32
+      ],
+      "size": [
+        0.55,
+        0.3,
+        0.3
+      ]
+    },
+    {
+      "id": "suction-valve",
+      "center": [
+        -1.24,
+        0.62,
+        0.32
+      ],
+      "size": [
+        0.14,
+        0.72,
+        0.14
+      ]
+    },
+    {
+      "id": "discharge-valve",
+      "center": [
+        -1.24,
+        0.55,
+        -0.3
+      ],
+      "size": [
+        0.12,
+        0.58,
+        0.12
+      ]
+    },
+    {
+      "id": "electrical-box",
+      "center": [
+        -0.45,
+        0.86,
+        0.62
+      ],
+      "size": [
+        0.44,
+        0.5,
+        0.12
+      ]
+    },
+    {
+      "id": "foot-nw",
+      "center": [
+        -1.1,
+        0.05,
+        0.52
+      ],
+      "size": [
+        0.14,
+        0.1,
+        0.14
+      ]
+    },
+    {
+      "id": "foot-ne",
+      "center": [
+        1.1,
+        0.05,
+        0.52
+      ],
+      "size": [
+        0.14,
+        0.1,
+        0.14
+      ]
+    },
+    {
+      "id": "foot-sw",
+      "center": [
+        -1.1,
+        0.05,
+        -0.52
+      ],
+      "size": [
+        0.14,
+        0.1,
+        0.14
+      ]
+    },
+    {
+      "id": "foot-se",
+      "center": [
+        1.1,
+        0.05,
+        -0.52
+      ],
+      "size": [
+        0.14,
+        0.1,
+        0.14
+      ]
+    }
+  ]
+}

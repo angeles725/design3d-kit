@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:," />
+<title>Condensadora — Voxel Blockout</title>
+<!-- SCALE: 1 voxel = 0.1 m · 1 world unit = 1 m -->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #06080d; overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  .hud {
+    position: fixed; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color: #cdd6df; pointer-events: none; text-shadow: 0 1px 2px #000a;
+  }
+  #title { top: 12px; left: 14px; font-size: 15px; font-weight: 700; letter-spacing: .3px; }
+  #sub   { top: 32px; left: 14px; font-size: 11px; color: #7f8a98; }
+  #dims  { top: 47px; left: 14px; font-size: 11px; color: #7f8a98; }
+  #legend {
+    top: 12px; right: 14px; font-size: 11px; text-align: right; line-height: 1.55;
+    background: #0d1220cc; padding: 8px 10px; border: 1px solid #1c2330; border-radius: 6px;
+    pointer-events: none;
+  }
+  #legend b { display:inline-block; width:10px; height:10px; border-radius:2px; margin-left:7px; vertical-align:middle; }
+  #ctrl {
+    bottom: 12px; right: 14px; font-size: 11px; text-align: right; color: #6b7480;
+    background: #0d1220cc; padding: 7px 10px; border: 1px solid #1c2330; border-radius: 6px;
+    pointer-events: auto;
+  }
+  #ctrl button { font: inherit; color:#cdd6df; background:#1a2233; border:1px solid #2a3550; border-radius:4px; padding:2px 7px; cursor:pointer; margin-left:6px; }
+  #ctrl button:hover { background:#243155; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="hud" id="title">CONDENSADORA · unidad condensadora enfriada por aire</div>
+<div class="hud" id="sub">BLOCKOUT — voxel massing (1 vx = 0.1 m) · revisión previa al pase PBR</div>
+<div class="hud" id="dims">envelope 2.4 × 1.5 × 1.2 m · 2 ventiladores axiales de descarga superior</div>
+<div class="hud" id="legend">
+  gabinete lámina<b style="background:#b7bcc1"></b><br/>
+  serpentín (aletas)<b style="background:#7f97a6"></b><br/>
+  cobre / válvulas<b style="background:#b5713f"></b><br/>
+  ventiladores<b style="background:#4a4f56"></b><br/>
+  compresor / recibidor<b style="background:#2f3439"></b><br/>
+  tablero eléctrico<b style="background:#6b7078"></b>
+</div>
+<div class="hud" id="ctrl">
+  <span id="fanstate">ventiladores: ON</span>
+  <button id="fanbtn">toggle</button>
+  <button id="rotbtn">orbit</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const V = 0.1;                 // voxel size (m)
+const GAP = 0.95;              // draw cube slightly smaller -> visible voxel grid
+
+// ---------------------------------------------------------------------------
+// Voxel accumulator: color -> [ [x,y,z], ... ] (cell centers, world meters)
+// Every voxel stays inside its object AABB (scene.json envelopes) => GR3 honest.
+// ---------------------------------------------------------------------------
+const buckets = new Map();
+function add(color, x, y, z) {
+  let a = buckets.get(color); if (!a) { a = []; buckets.set(color, a); } a.push([x, y, z]);
+}
+function axisCells(c, s) {
+  const n = Math.max(1, Math.round(s / V));
+  const start = c - (n * V) / 2 + V / 2;
+  const arr = new Array(n);
+  for (let i = 0; i < n; i++) arr[i] = start + i * V;
+  return arr;
+}
+// fill an AABB (center,size). pred(ix,iy,iz,nx,ny,nz,x,y,z) -> color|null|true
+function fill(center, size, colorOrFn) {
+  const xs = axisCells(center[0], size[0]);
+  const ys = axisCells(center[1], size[1]);
+  const zs = axisCells(center[2], size[2]);
+  const nx = xs.length, ny = ys.length, nz = zs.length;
+  for (let ix = 0; ix < nx; ix++) for (let iy = 0; iy < ny; iy++) for (let iz = 0; iz < nz; iz++) {
+    const x = xs[ix], y = ys[iy], z = zs[iz];
+    let c = colorOrFn;
+    if (typeof colorOrFn === 'function') c = colorOrFn(ix, iy, iz, nx, ny, nz, x, y, z);
+    if (c === null || c === false || c === undefined) continue;
+    add(c, x, y, z);
+  }
+}
+const isShell = (ix, iy, iz, nx, ny, nz) =>
+  ix === 0 || ix === nx - 1 || iy === 0 || iy === ny - 1 || iz === 0 || iz === nz - 1;
+
+// ---- palette ----
+const COL = {
+  skid: '#3a3f45', foot: '#2b2f34',
+  sheet: '#b7bcc1', sheetDk: '#9aa0a6', deck: '#a7adb3',
+  finA: '#8fa6b4', finB: '#728896', copper: '#b5713f', brass: '#b98a34',
+  shroud: '#4a4f56', blade: '#20242a', hub: '#585f68',
+  comp: '#2f3439', recv: '#5a6069',
+  ebox: '#6b7078', warn: '#e8c33a', conduit: '#3d434b',
+};
+
+// ---------------------------------------------------------------------------
+// BUILD — one object at a time, matching condensadora.scene.json envelopes
+// ---------------------------------------------------------------------------
+
+// 1) skid base (solid slab)
+fill([0, 0.075, 0], [2.40, 0.15, 1.20], COL.skid);
+
+// feet
+for (const fx of [-1.10, 1.10]) for (const fz of [-0.52, 0.52])
+  fill([fx, 0.05, fz], [0.14, 0.10, 0.14], COL.foot);
+
+// 2/3) condenser coils on both long faces — finned read: alternating fin shades
+//      + copper header rows top & bottom. (differentiated from flat sheet ends)
+function coil(zc) {
+  fill([0, 0.68, zc], [2.00, 1.00, 0.10], (ix, iy, iz, nx, ny) => {
+    if (iy <= 0 || iy >= ny - 1) return COL.copper;          // header tubes
+    if (iy === Math.floor(ny / 2)) return COL.copper;         // mid distributor
+    return (ix % 2 === 0) ? COL.finA : COL.finB;              // vertical fins
+  });
+}
+coil(0.55); coil(-0.55);
+
+// 4) machine-compartment end (-X): louvered lower half, solid upper with fasteners
+fill([-1.10, 0.68, 0.0], [0.20, 1.00, 1.20], (ix, iy, iz, nx, ny, nz) => {
+  const outer = ix === 0;                       // the -X exterior face
+  if (outer) {
+    if (iy < ny * 0.62) return (iy % 2 === 0) ? COL.sheetDk : null;  // horizontal louvers
+    // fastener dots at the top corners
+    if (iy === ny - 2 && (iz === 1 || iz === nz - 2)) return COL.foot;
+    return COL.sheet;
+  }
+  return isShell(ix, iy, iz, nx, ny, nz) ? COL.sheetDk : null;       // rest of the end shell
+});
+
+// 5) coil-access end (+X): solid sheet shell + a diagonal-corner access-panel seam
+fill([1.10, 0.68, 0.0], [0.20, 1.00, 1.20], (ix, iy, iz, nx, ny, nz) => {
+  const outer = ix === nx - 1;
+  if (outer) {
+    // panel seam: a lighter frame border + corner fasteners
+    const border = iy === 1 || iy === ny - 2 || iz === 1 || iz === nz - 2;
+    if ((iy === 1 || iy === ny - 2) && (iz === 1 || iz === nz - 2)) return COL.foot;
+    return border ? COL.sheetDk : COL.sheet;
+  }
+  return isShell(ix, iy, iz, nx, ny, nz) ? COL.sheetDk : null;
+});
+
+// short side edges between coils and ends are covered by coil+end overlap; add
+// thin corner posts so the cabinet reads fully closed at the vertical arrises
+for (const px of [-1.0, 1.0]) for (const pz of [-0.55, 0.55])
+  fill([px, 0.68, pz], [0.10, 1.00, 0.10], (ix, iy, iz, nx, ny) =>
+    (iy === 0 || iy === ny - 1) ? COL.sheetDk : COL.sheetDk);
+
+// 6) top deck (fan plate) with two circular fan throats cut out
+const FAN = [[-0.55, 1.30], [0.55, 1.30]];       // [x, y] centers, z=0
+const THROAT = 0.42;
+fill([0, 1.20, 0], [2.40, 0.10, 1.20], (ix, iy, iz, nx, ny, nz, x, y, z) => {
+  for (const [fx] of FAN) if (Math.hypot(x - fx, z) < THROAT) return null;  // throat hole
+  return COL.deck;
+});
+
+// 7) fan shrouds — square-torus rings around each throat
+for (const [fx, fy] of FAN) {
+  fill([fx, fy, 0], [0.98, 0.12, 0.98], (ix, iy, iz, nx, ny, nz, x, y, z) => {
+    const r = Math.hypot(x - fx, z);
+    return (r >= 0.35 && r <= 0.48) ? COL.shroud : null;      // ring wall
+  });
+}
+
+// 8) compressor (scroll) — rounded voxel cylinder in the machine compartment
+fill([-0.78, 0.52, 0.10], [0.55, 0.72, 0.55], (ix, iy, iz, nx, ny, nz, x, y, z) => {
+  const r = Math.hypot(x + 0.78, z - 0.10);
+  if (r > 0.26) return null;
+  return (iy >= ny - 1) ? COL.recv : COL.comp;               // lighter top cap
+});
+
+// 9) liquid receiver — horizontal voxel cylinder (axis along X)
+fill([-0.78, 0.34, -0.32], [0.55, 0.30, 0.30], (ix, iy, iz, nx, ny, nz, x, y, z) => {
+  const r = Math.hypot(y - 0.34, z + 0.32);
+  return (r <= 0.15) ? COL.recv : null;
+});
+
+// 10) service valves on the machine end — vertical pipes + valve body + handwheel
+function valve(cx, cy, cz, sz, pipeCol) {
+  fill([cx, cy, cz], sz, (ix, iy, iz, nx, ny, nz, x, y, z) => {
+    const r = Math.hypot(x - cx, z - cz);
+    if (r > 0.055) {
+      // brass valve body + handwheel disc near the top
+      if (iy === Math.floor(ny * 0.7) && r <= sz[0] / 2) return COL.brass;
+      return null;
+    }
+    return pipeCol;                                           // pipe core
+  });
+}
+valve(-1.24, 0.62, 0.32, [0.14, 0.72, 0.14], COL.brass);      // suction (larger)
+valve(-1.24, 0.55, -0.30, [0.12, 0.58, 0.12], COL.copper);    // discharge
+
+// 11) electrical box — shell + warning label + a short conduit up to the deck
+fill([-0.45, 0.86, 0.62], [0.44, 0.50, 0.12], (ix, iy, iz, nx, ny, nz) => {
+  const outer = iz === nz - 1;
+  if (outer) {
+    // warning stripe band across the middle
+    if (iy === Math.floor(ny / 2)) return COL.warn;
+    return COL.ebox;
+  }
+  return isShell(ix, iy, iz, nx, ny, nz) ? COL.ebox : null;
+});
+fill([-0.45, 1.10, 0.60], [0.06, 0.20, 0.06], COL.conduit);   // conduit riser
+
+// ---------------------------------------------------------------------------
+// THREE.js scene
+// ---------------------------------------------------------------------------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#06080d');
+scene.fog = new THREE.Fog('#06080d', 8, 22);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 1000);
+const TARGET = new THREE.Vector3(0, 0.66, 0);
+
+// hero view (az ~-50, el ~24) — looks at the machine end (louvers, compressor,
+// service valves, electrical box) + a coil face, so the condensing-unit identity reads.
+function heroCam() {
+  const d = 4.7, az = THREE.MathUtils.degToRad(-50), el = THREE.MathUtils.degToRad(24);
+  camera.position.set(
+    TARGET.x + d * Math.cos(el) * Math.sin(az),
+    TARGET.y + d * Math.sin(el),
+    TARGET.z + d * Math.cos(el) * Math.cos(az)
+  );
+  camera.lookAt(TARGET);
+}
+heroCam();
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(TARGET);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = false;         // OFF by default (gate captures need a settled frame)
+controls.update();
+
+// --cam / ?cam=x,y,z,tx,ty,tz deterministic capture hook (Hard Rule 9)
+const q = new URLSearchParams(location.search);
+if (q.has('cam')) {
+  const p = q.get('cam').split(',').map(Number);
+  if (p.length === 6 && p.every(n => Number.isFinite(n))) {
+    camera.position.set(p[0], p[1], p[2]);
+    TARGET.set(p[3], p[4], p[5]); controls.target.copy(TARGET); camera.lookAt(TARGET); controls.update();
+  }
+}
+window.__cam = () => ({
+  position: camera.position.toArray(),
+  target: controls.target.toArray(),
+});
+
+// lights: key + fill + rim + hemisphere + ambient
+const key = new THREE.DirectionalLight(0xffffff, 2.1);
+key.position.set(4, 6, 3); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -3; key.shadow.camera.right = 3;
+key.shadow.camera.top = 3; key.shadow.camera.bottom = -3;
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 20;
+scene.add(key);
+scene.add(new THREE.DirectionalLight(0x88aaff, 0.5).translateX(-4).translateY(2).translateZ(-2));
+const frontal = new THREE.DirectionalLight(0xffffff, 0.6); frontal.position.set(2, 1.5, 5); scene.add(frontal);
+scene.add(new THREE.HemisphereLight(0xbfd3e6, 0x202428, 0.55));
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+// ground
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40),
+  new THREE.MeshStandardMaterial({ color: '#0c1018', roughness: 1, metalness: 0 })
+);
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+// ---- one InstancedMesh per color ----
+const geo = new THREE.BoxGeometry(V * GAP, V * GAP, V * GAP);
+const dummy = new THREE.Object3D();
+let totalVox = 0;
+for (const [color, cells] of buckets) {
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.15 });
+  const im = new THREE.InstancedMesh(geo, mat, cells.length);
+  im.castShadow = true; im.receiveShadow = true;
+  for (let i = 0; i < cells.length; i++) {
+    dummy.position.set(cells[i][0], cells[i][1], cells[i][2]);
+    dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix);
+  }
+  im.instanceMatrix.needsUpdate = true;
+  scene.add(im);
+  totalVox += cells.length;
+}
+
+// ---- animated fans (blades in Groups, OUTSIDE the InstancedMesh) ----
+const fanGroups = [];
+const bladeMat = new THREE.MeshStandardMaterial({ color: COL.blade, roughness: 0.55, metalness: 0.3 });
+const hubMat = new THREE.MeshStandardMaterial({ color: COL.hub, roughness: 0.5, metalness: 0.5 });
+for (const [fx, fy] of FAN) {
+  const g = new THREE.Group(); g.position.set(fx, fy + 0.02, 0);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.08, 12), hubMat);
+  g.add(hub);
+  const NB = 6;
+  for (let b = 0; b < NB; b++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.02, 0.11), bladeMat);
+    blade.castShadow = true;
+    const a = (b / NB) * Math.PI * 2;
+    blade.position.set(Math.cos(a) * 0.24, 0, Math.sin(a) * 0.24);
+    blade.rotation.y = a;
+    blade.rotation.z = THREE.MathUtils.degToRad(22);   // pitch
+    g.add(blade);
+  }
+  scene.add(g); fanGroups.push(g);
+}
+
+// ---- UI ----
+let fansOn = true;
+document.getElementById('fanbtn').onclick = () => {
+  fansOn = !fansOn;
+  document.getElementById('fanstate').textContent = 'ventiladores: ' + (fansOn ? 'ON' : 'OFF');
+};
+document.getElementById('rotbtn').onclick = () => { controls.autoRotate = !controls.autoRotate; };
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+let last = performance.now();
+function tick(now) {
+  const dt = (now - last) / 1000; last = now;
+  if (fansOn) for (const g of fanGroups) g.rotation.y += dt * 6.0;
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// readiness flag after first frames settle (for headless capture)
+renderer.render(scene, camera);
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  document.documentElement.setAttribute('data-app-ready', 'true');
+}));
+console.log('[condensadora] voxels:', totalVox, '· colors:', buckets.size);
+</script>
+</body>
+</html>

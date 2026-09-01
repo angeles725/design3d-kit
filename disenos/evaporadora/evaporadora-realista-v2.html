@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaporadora — Realista PBR v2</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #06080d; overflow: hidden; }
+  #app { position: fixed; inset: 0; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    font: 12px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color: #cdd6df; background: rgba(6,8,13,.62); border: 1px solid #1c2530;
+    border-radius: 8px; padding: 10px 12px; max-width: 400px; pointer-events: none;
+  }
+  #hud h1 { margin: 0 0 4px; font-size: 13px; color: #7fe9dc; letter-spacing: .3px; }
+  #hud .sub { color: #8ea0ab; }
+  #hud .pass { color: #ffcf6b; }
+  #legend { position: fixed; top: 12px; right: 12px; z-index: 10;
+    font: 11px/1.5 ui-monospace, monospace; color: #cdd6df;
+    background: rgba(6,8,13,.62); border: 1px solid #1c2530; border-radius: 8px; padding: 8px 10px; }
+  #legend .row { display: flex; align-items: center; gap: 6px; }
+  #legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud">
+  <h1>EVAPORADORA — realista v2 (parametric PBR)</h1>
+  <div class="sub">industrial ceiling-hung unit cooler · 2× axial discharge fan + exposed finned coil</div>
+  <div class="pass" id="passlabel">pass: realista · sheet-metal shell · dense coil · TXV + distributor · junction box + conduit · fasteners/seams/labels</div>
+  <div class="sub">casing 1.20×0.50×0.55 m · 2× fan Ø0.32 m · detail is SUB-PART inside the voxel AABBs · geometry, NOT PBR-on-voxel · 1u = 1 m</div>
+</div>
+<div id="legend"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// 1 world unit = 1 m. Realista TRANSLATES the approved VOXEL massing (dimensional source of truth).
+// The 9 voxel AABBs are preserved (GR3 drift ~0); ALL richness below lives INSIDE those AABBs.
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;      // baked shadows: one bake on the first frame, then frozen
+renderer.shadowMap.needsUpdate = true;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06080d);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+// --- hero camera: front-right 3/4, low, so the two fans dominate and the right-flank
+//     refrigeration + electrical cluster reads (that is where the density now lives) ---
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 1000);
+camera.position.set(1.72, 1.02, 1.80);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.autoRotate = false;
+controls.target.set(0.08, 0.47, -0.02);
+
+// --- light rig (TRACK-THREEJS generic defaults) ---
+const key = new THREE.DirectionalLight(0xffffff, 1.55);
+key.position.set(2.8, 4.6, 3.2); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 18;
+key.shadow.camera.left = -4; key.shadow.camera.right = 4;
+key.shadow.camera.top = 4; key.shadow.camera.bottom = -4;
+key.shadow.bias = -0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xbcd0ff, 0.45); fill.position.set(-3, 3, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0x00d4aa, 0.22); rim.position.set(-2, 2.2, -4); scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xcde0ee, 0x20272f, 0.5));
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+const frontFill = new THREE.DirectionalLight(0xffffff, 0.4); frontFill.position.set(0.2, 1.0, 4); scene.add(frontFill);
+
+// =====================================================================================
+// PROCEDURAL CanvasTexture maps (no image files) — value-noise + brushed roughness
+// =====================================================================================
+function noiseTex(size, base, varr, scale) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; };
+  const sstep = t => t * t * (3 - 2 * t);
+  const vnoise = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const a = hash(xi, yi), b = hash(xi + 1, yi), cc = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    const u = sstep(xf), v = sstep(yf);
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + cc * (1 - u) * v + d * u * v;
+  };
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let f = 0, amp = 0.5, fr = scale / size;
+    for (let o = 0; o < 3; o++) { f += amp * vnoise(x * fr, y * fr); amp *= 0.5; fr *= 2.03; }
+    const val = Math.max(0, Math.min(1, base + (f - 0.5) * 2 * varr));
+    const px = (y * size + x) * 4; const g = (val * 255) | 0;
+    img.data[px] = g; img.data[px + 1] = g; img.data[px + 2] = g; img.data[px + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+function brushedTex(size, base, varr) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = `rgb(${(base*255)|0},${(base*255)|0},${(base*255)|0})`; ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < size * 5; i++) {
+    const y = Math.random() * size, len = 20 + Math.random() * size, x = Math.random() * size;
+    const g = Math.max(0, Math.min(255, ((base + (Math.random() - 0.5) * 2 * varr) * 255) | 0));
+    ctx.strokeStyle = `rgba(${g},${g},${g},0.35)`; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + len, y + (Math.random() - 0.5) * 1.5); ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+const paintRough = noiseTex(256, 0.52, 0.10, 40); paintRough.repeat.set(3, 2);
+const aluRough   = brushedTex(256, 0.42, 0.14); aluRough.repeat.set(1, 4);
+const galvRough  = brushedTex(256, 0.38, 0.16); galvRough.repeat.set(2, 2);
+const copperRough= noiseTex(128, 0.34, 0.08, 26); copperRough.repeat.set(2, 3);
+const foamRough  = noiseTex(128, 0.86, 0.10, 30); foamRough.repeat.set(2, 6);
+
+// --- nameplate CanvasTexture: etched brand + spec block (drawn, never downloaded) ---
+function nameplateTex() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#e9edf0'); grad.addColorStop(0.5, '#dbe1e6'); grad.addColorStop(1, '#c9d0d6');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 512, 256);
+  // engraved border
+  ctx.strokeStyle = '#6a7681'; ctx.lineWidth = 4; ctx.strokeRect(10, 10, 492, 236);
+  ctx.strokeStyle = '#aeb7bf'; ctx.lineWidth = 2; ctx.strokeRect(14, 14, 484, 228);
+  // brand (embossed: dark fill + light highlight offset)
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 58px Arial, sans-serif';
+  ctx.fillStyle = '#f4f7f9'; ctx.fillText('FRIOTEC', 32, 55);
+  ctx.fillStyle = '#3a444d'; ctx.fillText('FRIOTEC', 30, 53);
+  ctx.font = 'italic 20px Arial, sans-serif';
+  ctx.fillStyle = '#5b6771'; ctx.fillText('unit cooler · evaporador industrial', 34, 92);
+  // spec table
+  ctx.font = '18px "Courier New", monospace'; ctx.fillStyle = '#333b42';
+  const rows = [
+    'MODEL   UC-1200 / 2F',  'CAP.    12.4 kW  R-404A',
+    'FANS    2 × Ø320 mm',   'AIRFLOW 4200 m³/h',
+    'FLA     1.8 A   230V~', 'S/N     24-08-0731',
+  ];
+  let y = 128;
+  for (let i = 0; i < rows.length; i++) {
+    const col = i % 2, r = (i / 2) | 0;
+    ctx.fillText(rows[i], 34 + col * 248, y + r * 32);
+  }
+  // CE + fake barcode
+  ctx.font = 'bold 22px Arial'; ctx.fillStyle = '#2b333a'; ctx.fillText('CE', 460, 40);
+  for (let i = 0; i < 34; i++) { ctx.fillStyle = i % 3 ? '#2b333a' : '#5b6771'; ctx.fillRect(300 + i * 5, 214, (i % 3) + 1, 26); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+// --- warning label CanvasTexture: hazard triangle + text ---
+function warnTex(kind) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f2c400'; ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, 246, 246);
+  // triangle
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.moveTo(128, 34); ctx.lineTo(214, 150); ctx.lineTo(42, 150); ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#f2c400';
+  ctx.beginPath(); ctx.moveTo(128, 58); ctx.lineTo(194, 140); ctx.lineTo(62, 140); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#111'; ctx.font = 'bold 64px Arial'; ctx.textAlign = 'center';
+  ctx.fillText(kind === 'volt' ? '⚡' : '⚙', 128, 128);
+  ctx.font = 'bold 26px Arial';
+  ctx.fillText(kind === 'volt' ? 'HIGH VOLTAGE' : 'ROTATING', 128, 182);
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText(kind === 'volt' ? '230V — LOCK OUT' : 'FAN — KEEP CLEAR', 128, 214);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+
+// =====================================================================================
+// MATERIAL FAMILIES (per family, never PBR-on-voxel; painted = dielectric + clearcoat)
+// =====================================================================================
+const M = {
+  paint:    new THREE.MeshPhysicalMaterial({ color: 0xe7ebee, metalness: 0.0, roughness: 1.0, roughnessMap: paintRough, clearcoat: 0.85, clearcoatRoughness: 0.16, envMapIntensity: 1.0 }),
+  paintEnd: new THREE.MeshPhysicalMaterial({ color: 0xd2d8dd, metalness: 0.0, roughness: 1.0, roughnessMap: paintRough, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 0.9 }),
+  paintDoor:new THREE.MeshPhysicalMaterial({ color: 0xdfe4e8, metalness: 0.0, roughness: 1.0, roughnessMap: paintRough, clearcoat: 0.8, clearcoatRoughness: 0.18, envMapIntensity: 1.0 }),
+  galv:     new THREE.MeshStandardMaterial({ color: 0xb9c1c8, metalness: 0.9, roughness: 1.0, roughnessMap: galvRough, envMapIntensity: 1.6 }),
+  alu:      new THREE.MeshStandardMaterial({ color: 0xc7cdd2, metalness: 0.9, roughness: 1.0, roughnessMap: aluRough, envMapIntensity: 1.7 }),
+  copper:   new THREE.MeshStandardMaterial({ color: 0xc27a3e, metalness: 1.0, roughness: 1.0, roughnessMap: copperRough, envMapIntensity: 1.9 }),
+  copperDark:new THREE.MeshStandardMaterial({ color: 0x8f5628, metalness: 1.0, roughness: 0.6, envMapIntensity: 1.5 }),
+  brass:    new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1.0, roughness: 0.32, envMapIntensity: 1.9 }),
+  grille:   new THREE.MeshStandardMaterial({ color: 0x2b333a, metalness: 0.85, roughness: 0.42, envMapIntensity: 1.4 }),
+  blade:    new THREE.MeshStandardMaterial({ color: 0x9aa4ad, metalness: 0.55, roughness: 0.42, envMapIntensity: 1.3 }),
+  bladeTip: new THREE.MeshStandardMaterial({ color: 0xff7a1a, metalness: 0.2, roughness: 0.55, emissive: 0x2a1200, emissiveIntensity: 0.4 }),
+  motor:    new THREE.MeshStandardMaterial({ color: 0x3a4249, metalness: 0.7, roughness: 0.45, envMapIntensity: 1.3 }),
+  darkrec:  new THREE.MeshStandardMaterial({ color: 0x0a0d11, metalness: 0.3, roughness: 0.8 }),
+  tray:     new THREE.MeshStandardMaterial({ color: 0xaab2b9, metalness: 0.7, roughness: 0.5, roughnessMap: galvRough, envMapIntensity: 1.2 }),
+  bracket:  new THREE.MeshStandardMaterial({ color: 0x596069, metalness: 0.85, roughness: 0.5, envMapIntensity: 1.2 }),
+  rod:      new THREE.MeshStandardMaterial({ color: 0x777f88, metalness: 0.9, roughness: 0.4, envMapIntensity: 1.3 }),
+  bolt:     new THREE.MeshStandardMaterial({ color: 0x6c747c, metalness: 0.95, roughness: 0.35, envMapIntensity: 1.5 }),
+  boltDark: new THREE.MeshStandardMaterial({ color: 0x40464c, metalness: 0.9, roughness: 0.45, envMapIntensity: 1.3 }),
+  rubber:   new THREE.MeshStandardMaterial({ color: 0x14171a, metalness: 0.0, roughness: 0.92 }),
+  foam:     new THREE.MeshStandardMaterial({ color: 0x1c2024, metalness: 0.0, roughness: 1.0, roughnessMap: foamRough, envMapIntensity: 0.4 }),
+  plastic:  new THREE.MeshStandardMaterial({ color: 0x2b3138, metalness: 0.1, roughness: 0.55, envMapIntensity: 0.9 }),
+  plasticGrey:new THREE.MeshStandardMaterial({ color: 0x555d64, metalness: 0.15, roughness: 0.5, envMapIntensity: 1.0 }),
+  seam:     new THREE.MeshStandardMaterial({ color: 0x2a3138, metalness: 0.4, roughness: 0.7 }),
+  glass:    new THREE.MeshStandardMaterial({ color: 0x9fd8e6, metalness: 0.0, roughness: 0.08, transparent: true, opacity: 0.5, envMapIntensity: 1.6 }),
+  plate:    new THREE.MeshStandardMaterial({ map: nameplateTex(), metalness: 0.55, roughness: 0.42, envMapIntensity: 1.2 }),
+  labelV:   new THREE.MeshStandardMaterial({ map: warnTex('volt'), metalness: 0.0, roughness: 0.6 }),
+  labelR:   new THREE.MeshStandardMaterial({ map: warnTex('rot'),  metalness: 0.0, roughness: 0.6 }),
+  led:      new THREE.MeshStandardMaterial({ color: 0x18e06a, emissive: 0x18e06a, emissiveIntensity: 1.4, roughness: 0.4 }),
+};
+
+function add(mesh, cast = true, recv = true) { mesh.castShadow = cast; mesh.receiveShadow = recv; scene.add(mesh); return mesh; }
+
+// small reusable geometries
+const boltGeo = new THREE.CylinderGeometry(0.007, 0.007, 0.006, 6);   // hex-head bolt
+const boltSmGeo = new THREE.CylinderGeometry(0.0045, 0.0045, 0.004, 6);
+const rivetGeo = new THREE.SphereGeometry(0.0035, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+
+// generic instanced-fastener accumulator: collect transforms, emit one InstancedMesh per (geo,mat)
+function InstancedBatch(geo, mat, cast = true) {
+  const items = [];
+  return {
+    add(pos, rot) { items.push({ pos, rot: rot || [0, 0, 0] }); },
+    build(parent) {
+      if (!items.length) return;
+      const im = new THREE.InstancedMesh(geo, mat, items.length);
+      im.castShadow = cast; im.receiveShadow = false;
+      const d = new THREE.Object3D();
+      for (let i = 0; i < items.length; i++) {
+        d.position.set(...items[i].pos); d.rotation.set(...items[i].rot); d.updateMatrix(); im.setMatrixAt(i, d.matrix);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      (parent || scene).add(im);
+      return im;
+    },
+  };
+}
+
+// ================= CASING — sheet-metal shell 1.20 x 0.50 x 0.55, front toward +Z =================
+const unit = new THREE.Group(); scene.add(unit);
+const CX = 0, CY = 0.50, CZ = 0, CW = 1.20, CH = 0.50, CD = 0.55;
+const FRONT = CZ + CD / 2, BACK = CZ - CD / 2, RIGHT = CX + CW / 2, LEFT = CX - CW / 2;
+const TOP = CY + CH / 2, BOT = CY - CH / 2;
+const shell = new THREE.Mesh(new RoundedBoxGeometry(CW, CH, CD, 3, 0.024), M.paint);
+shell.position.set(CX, CY, CZ); shell.castShadow = true; shell.receiveShadow = true; unit.add(shell);
+// galvanized end caps (left/right) — bolted sheet-metal panels
+for (const sx of [-1, 1]) {
+  const cap = new THREE.Mesh(new RoundedBoxGeometry(0.02, CH * 0.98, CD * 0.98, 2, 0.014), M.paintEnd);
+  cap.position.set(CX + sx * (CW / 2 - 0.006), CY, CZ); cap.castShadow = true; unit.add(cap);
+}
+// top deck accent strip (galvanized)
+const deck = new THREE.Mesh(new THREE.BoxGeometry(CW * 0.98, 0.02, CD * 0.9), M.galv);
+deck.position.set(CX, CY + CH / 2 - 0.005, CZ); add(deck); unit.add(deck);
+
+// ---- panel seams: recessed grooves that break up the big painted faces ----
+function seam(w, h, d, x, y, z) { const s = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), M.seam); s.position.set(x, y, z); unit.add(s); return s; }
+// horizontal mid-height seam on front + both flanks
+seam(CW * 0.995, 0.006, 0.004, CX, CY, FRONT + 0.0005);
+seam(0.004, CH * 0.97, 0.006, RIGHT + 0.0005, CY, CZ);
+seam(0.004, CH * 0.97, 0.006, LEFT - 0.0005, CY, CZ);
+// vertical corner-panel seams on the front (splits front into 3 sheet panels)
+for (const sx of [-0.60 + 0.20, 0.60 - 0.20]) seam(0.005, CH * 0.9, 0.004, sx, CY, FRONT + 0.0005);
+
+// ---- fasteners: bolt heads at every panel corner + rivet lines along the seams ----
+const bolts = InstancedBatch(boltGeo, M.bolt);
+const rivets = InstancedBatch(rivetGeo, M.boltDark, false);
+// corner bolts on the front face (4 corners inset)
+for (const sx of [LEFT + 0.03, RIGHT - 0.03]) for (const sy of [BOT + 0.04, TOP - 0.04]) {
+  bolts.add([sx, sy, FRONT + 0.004], [Math.PI / 2, 0, 0]);
+}
+// bolt columns on the end caps (flange look)
+for (const sx of [LEFT - 0.004, RIGHT + 0.004]) {
+  for (const sy of [BOT + 0.05, CY, TOP - 0.05]) for (const sz of [BACK + 0.08, FRONT - 0.08]) {
+    bolts.add([sx, sy, sz], [0, 0, Math.PI / 2]);
+  }
+}
+// rivet line along the top deck seam (front + back edges)
+for (let i = 0; i < 22; i++) {
+  const x = LEFT + 0.05 + i * ((CW - 0.10) / 21);
+  rivets.add([x, TOP - 0.012, FRONT + 0.001], [Math.PI / 2, 0, 0]);
+  rivets.add([x, TOP - 0.012, BACK - 0.001], [-Math.PI / 2, 0, 0]);
+}
+// rivet line down the front vertical seams
+for (const sx of [-0.40, 0.40]) for (let i = 0; i < 7; i++) {
+  rivets.add([sx, BOT + 0.05 + i * ((CH - 0.10) / 6), FRONT + 0.001], [Math.PI / 2, 0, 0]);
+}
+bolts.build(unit); rivets.build(unit);
+
+// ================= LEFT-FLANK REMOVABLE ACCESS DOOR (hinges + latch + recessed handle) =============
+{
+  const doorG = new THREE.Group(); doorG.position.set(LEFT - 0.012, CY, CZ - 0.01); unit.add(doorG);
+  const DW = 0.02, DH = 0.34, DD = 0.34;
+  const door = new THREE.Mesh(new RoundedBoxGeometry(DW, DH, DD, 2, 0.01), M.paintDoor);
+  door.castShadow = true; door.receiveShadow = true; doorG.add(door);
+  // recessed frame groove around the door
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.006, DH + 0.03, DD + 0.03), M.seam);
+  frame.position.set(0.006, 0, 0); doorG.add(frame);
+  // door corner bolts
+  const dBolts = InstancedBatch(boltSmGeo, M.bolt);
+  for (const sy of [-DH / 2 + 0.03, DH / 2 - 0.03]) for (const sz of [-DD / 2 + 0.03, DD / 2 - 0.03]) dBolts.add([-DW / 2 - 0.002, sy, sz], [0, 0, Math.PI / 2]);
+  dBolts.build(doorG);
+  // two hinges on the back edge
+  for (const sy of [-0.10, 0.10]) {
+    const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.05, 10), M.bracket);
+    hinge.rotation.x = Math.PI / 2; hinge.position.set(-0.012, sy, -DD / 2 + 0.005); doorG.add(hinge);
+    const knuckle = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.016, 10), M.bolt);
+    knuckle.rotation.x = Math.PI / 2; knuckle.position.set(-0.012, sy, -DD / 2 + 0.005); doorG.add(knuckle);
+  }
+  // recessed handle: a curved bar sitting in a dark recess on the front edge
+  const recess = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.10, 0.05), M.darkrec);
+  recess.position.set(-0.011, 0, DD / 2 - 0.06); doorG.add(recess);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.006, 8, 16, Math.PI), M.bracket);
+  handle.rotation.y = Math.PI / 2; handle.rotation.z = Math.PI / 2; handle.position.set(-0.016, 0, DD / 2 - 0.06); doorG.add(handle);
+  // quarter-turn latch below the handle
+  const latch = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.014, 8), M.bolt);
+  latch.rotation.z = Math.PI / 2; latch.position.set(-0.016, -0.12, DD / 2 - 0.06); doorG.add(latch);
+  const latchSlot = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.003, 0.016), M.darkrec);
+  latchSlot.position.set(-0.023, -0.12, DD / 2 - 0.06); doorG.add(latchSlot);
+}
+
+// ================= 2 AXIAL DISCHARGE FANS Ø0.32 on the +Z front face =================
+const R = 0.15;
+const fans = [{ x: -0.30 }, { x: 0.30 }];
+const spinners = [];
+function makeBladeGeo() {
+  const s = new THREE.Shape();
+  s.moveTo(0.028, -0.018);
+  s.quadraticCurveTo(0.075, -0.055, 0.130, -0.030);
+  s.quadraticCurveTo(0.150, -0.010, 0.150, 0.014);
+  s.quadraticCurveTo(0.120, 0.052, 0.070, 0.048);
+  s.quadraticCurveTo(0.040, 0.040, 0.028, 0.020);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.006, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.004, bevelThickness: 0.004, steps: 1 });
+  g.translate(0, 0, -0.003);
+  return g;
+}
+const bladeGeo = makeBladeGeo();
+const bladeTipGeo = new THREE.BoxGeometry(0.022, 0.03, 0.01);
+for (const f of fans) {
+  const g = new THREE.Group(); g.position.set(f.x, CY, FRONT - 0.03); unit.add(g);
+  // recessed dark venturi throat
+  const throat = new THREE.Mesh(new THREE.CircleGeometry(R + 0.03, 44), M.darkrec);
+  throat.position.set(0, 0, -0.028); g.add(throat);
+  // flared venturi bell mouth
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.055, R + 0.02, 0.07, 44, 1, true), M.galv);
+  bell.rotation.x = Math.PI / 2; bell.position.set(0, 0, 0.005); bell.castShadow = true; g.add(bell);
+  // orange venturi rim ring (safety accent) at the mouth
+  const rimRing = new THREE.Mesh(new THREE.TorusGeometry(R + 0.055, 0.006, 8, 48), M.bladeTip);
+  rimRing.position.set(0, 0, 0.04); g.add(rimRing);
+  // motor boss behind the rotor: cylinder + bolt circle
+  const motorBoss = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.06, 20), M.motor);
+  motorBoss.rotation.x = Math.PI / 2; motorBoss.position.z = -0.03; motorBoss.castShadow = true; g.add(motorBoss);
+  const bossBolts = InstancedBatch(boltSmGeo, M.bolt);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; bossBolts.add([Math.cos(a) * 0.04, Math.sin(a) * 0.04, -0.002], [Math.PI / 2, 0, 0]); }
+  bossBolts.build(g);
+  // 3 motor support struts across the throat (rim -> hub)
+  for (let i = 0; i < 3; i++) {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.012, (R + 0.02) * 2, 0.008), M.grille);
+    strut.rotation.z = i / 3 * Math.PI; strut.position.z = -0.01; g.add(strut);
+  }
+  // rotor: hub + 5 curved blades with orange tips
+  const spin = new THREE.Group(); g.add(spin);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 0.055, 20), M.grille);
+  hub.rotation.x = Math.PI / 2; hub.position.z = 0.01; spin.add(hub);
+  const noseCap = new THREE.Mesh(new THREE.SphereGeometry(0.033, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), M.grille);
+  noseCap.rotation.x = -Math.PI / 2; noseCap.position.z = 0.037; spin.add(noseCap);
+  for (let i = 0; i < 5; i++) {
+    const arm = new THREE.Group(); arm.rotation.z = (i / 5) * Math.PI * 2; spin.add(arm);
+    const blade = new THREE.Mesh(bladeGeo, M.blade);
+    blade.rotation.x = 0.42; blade.castShadow = true; arm.add(blade);
+    const tip = new THREE.Mesh(bladeTipGeo, M.bladeTip);
+    tip.position.set(0.145, 0.006, 0.004); tip.rotation.x = 0.42; arm.add(tip);
+  }
+  spinners.push(spin);
+  // wire guard: 4 concentric torus rings + 10 radial spokes, proud of the blades
+  const guard = new THREE.Group(); guard.position.set(0, 0, 0.05); g.add(guard);
+  for (const rr of [R * 0.28, R * 0.5, R * 0.72, R * 0.94, R + 0.03]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.0042, 6, 48), M.grille);
+    ring.castShadow = true; guard.add(ring);
+  }
+  for (let i = 0; i < 10; i++) {
+    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.0042, 0.0042, (R + 0.03) * 2, 6), M.grille);
+    spoke.rotation.z = (i / 10) * Math.PI; guard.add(spoke);
+  }
+  // central guard boss cap
+  const gcap = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 12), M.grille);
+  gcap.rotation.x = Math.PI / 2; guard.add(gcap);
+}
+// rotating-hazard label between/above the fans
+const rotLabel = add(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.004), M.labelR));
+rotLabel.position.set(0.0, 0.30, FRONT + 0.004);
+
+// ================= EXPOSED FINNED COIL BLOCK on the intake (-Z) face — DENSER =================
+const coil = new THREE.Group(); scene.add(coil);
+const COIL_Z = BACK - 0.015, COIL_W = 1.16, COIL_H = 0.40, COIL_D = 0.085;
+const finCount = 104, finGeo = new THREE.BoxGeometry(0.0016, COIL_H, COIL_D);
+const fins = new THREE.InstancedMesh(finGeo, M.alu, finCount);
+fins.castShadow = true; fins.receiveShadow = true;
+const dummy = new THREE.Object3D();
+for (let i = 0; i < finCount; i++) {
+  const x = -COIL_W / 2 + (i + 0.5) * (COIL_W / finCount);
+  dummy.position.set(x, CY, COIL_Z); dummy.updateMatrix(); fins.setMatrixAt(i, dummy.matrix);
+}
+fins.instanceMatrix.needsUpdate = true; coil.add(fins);
+// coil end plates (tube sheets) — galvanized frame + bolt rows
+for (const sx of [-1, 1]) {
+  const ep = new THREE.Mesh(new THREE.BoxGeometry(0.014, COIL_H + 0.03, COIL_D + 0.015), M.galv);
+  ep.position.set(sx * (COIL_W / 2 + 0.007), CY, COIL_Z); add(ep); coil.add(ep);
+  const epBolts = InstancedBatch(boltSmGeo, M.bolt);
+  for (const sy of [CY - 0.16, CY, CY + 0.16]) for (const sz of [COIL_Z - 0.03, COIL_Z + 0.03]) epBolts.add([sx * (COIL_W / 2 + 0.014), sy, sz], [0, 0, Math.PI / 2]);
+  epBolts.build(coil);
+}
+// copper serpentine: horizontal tubes at several rows + U-return bends alternating ends
+const rowYs = [CY - 0.16, CY - 0.08, CY, CY + 0.08, CY + 0.16];
+const tubeZ = [COIL_Z - 0.025, COIL_Z + 0.025];
+const tubeGeoLen = new THREE.CylinderGeometry(0.0085, 0.0085, COIL_W - 0.02, 12);
+for (let r = 0; r < rowYs.length; r++) {
+  for (let p = 0; p < tubeZ.length; p++) {
+    const t = new THREE.Mesh(tubeGeoLen, M.copper);
+    t.rotation.z = Math.PI / 2; t.position.set(CX, rowYs[r], tubeZ[p]); add(t, true, false); coil.add(t);
+  }
+  const endX = (r % 2 === 0 ? 1 : -1) * (COIL_W / 2 - 0.01);
+  const u = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.0085, 10, 20, Math.PI), M.copper);
+  u.rotation.y = Math.PI / 2; u.rotation.z = (r % 2 === 0 ? 0 : Math.PI);
+  u.position.set(endX, rowYs[r], COIL_Z); add(u, true, false); coil.add(u);
+}
+for (let r = 0; r < rowYs.length - 1; r++) {
+  const side = (r % 2 === 0 ? -1 : 1) * (COIL_W / 2 - 0.01);
+  const riser = new THREE.Mesh(new THREE.CylinderGeometry(0.0085, 0.0085, 0.08, 12), M.copper);
+  riser.position.set(side, (rowYs[r] + rowYs[r + 1]) / 2, COIL_Z - 0.025); add(riser, true, false); coil.add(riser);
+}
+
+// ================= REFRIGERATION DETAIL on the right header (TXV + distributor + drier + sight glass) ===
+const refr = new THREE.Group(); scene.add(refr);
+const HX = RIGHT - 0.04;   // right header station x (inside the coil footprint)
+// distributor spider: a small brass cone + several thin feeder tubes fanning into the coil face
+{
+  const distX = HX, distY = CY - 0.02, distZ = COIL_Z + 0.01;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.022, 0.04, 14), M.brass);
+  body.rotation.z = Math.PI / 2; body.position.set(distX + 0.06, distY, distZ); add(body, true, false); refr.add(body);
+  // feeder capillaries fanning to each coil row
+  for (let r = 0; r < rowYs.length; r++) {
+    const p0 = new THREE.Vector3(distX + 0.045, distY, distZ);
+    const p1 = new THREE.Vector3(distX + 0.01, (distY + rowYs[r]) / 2, distZ);
+    const p2 = new THREE.Vector3(COIL_W / 2 - 0.04, rowYs[r], COIL_Z + 0.02);
+    const path = new THREE.CatmullRomCurve3([p0, p1, p2]);
+    const cap = new THREE.Mesh(new THREE.TubeGeometry(path, 20, 0.0035, 7, false), M.copper);
+    add(cap, true, false); refr.add(cap);
+  }
+  // TXV / expansion valve body (a chunky brass block with a top diaphragm cap)
+  const txv = new THREE.Group(); txv.position.set(distX + 0.11, distY + 0.02, distZ); refr.add(txv);
+  const txvBody = new THREE.Mesh(new RoundedBoxGeometry(0.045, 0.05, 0.045, 2, 0.008), M.brass);
+  add(txvBody, true, false); txv.add(txvBody);
+  const txvCap = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 16), M.brass);
+  txvCap.position.y = 0.035; txv.add(txvCap);
+  const txvAdj = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.014, 12), M.copperDark);
+  txvAdj.position.y = -0.032; txv.add(txvAdj);
+  // sensing bulb + capillary clamped to the suction line
+  const bulb = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.05, 10), M.copperDark);
+  bulb.rotation.z = Math.PI / 2; bulb.position.set(distX + 0.02, CY + 0.12, distZ + 0.02); add(bulb, true, false); refr.add(bulb);
+  const capLine = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(distX + 0.11, distY + 0.05, distZ),
+    new THREE.Vector3(distX + 0.08, CY + 0.06, distZ + 0.02),
+    new THREE.Vector3(distX + 0.02, CY + 0.11, distZ + 0.02),
+  ]);
+  add(new THREE.Mesh(new THREE.TubeGeometry(capLine, 24, 0.0022, 6, false), M.copperDark), true, false);
+}
+
+// liquid line: sight glass + filter drier canister inline, exiting the right flank
+{
+  const ly = CY - 0.10, lz = 0.06;
+  const liquidPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(HX + 0.11, CY - 0.05, COIL_Z + 0.02),
+    new THREE.Vector3(RIGHT + 0.02, ly, 0.0),
+    new THREE.Vector3(RIGHT + 0.06, ly, lz),
+    new THREE.Vector3(RIGHT + 0.06, CY + 0.02, lz + 0.02),
+    new THREE.Vector3(RIGHT + 0.055, CY + 0.14, lz + 0.02),
+  ]);
+  add(new THREE.Mesh(new THREE.TubeGeometry(liquidPath, 60, 0.010, 12, false), M.copper), true, false);
+  // filter drier canister
+  const drier = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.10, 18), M.copperDark);
+  drier.position.set(RIGHT + 0.06, ly + 0.05, lz); add(drier, true, false); refr.add(drier);
+  const drierCapT = new THREE.Mesh(new THREE.SphereGeometry(0.024, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.copperDark);
+  drierCapT.position.set(RIGHT + 0.06, ly + 0.10, lz); refr.add(drierCapT);
+  // sight glass (glass bead in a brass ring) just after the drier
+  const sgRing = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.02, 14), M.brass);
+  sgRing.position.set(RIGHT + 0.058, CY + 0.06, lz + 0.02); add(sgRing, true, false); refr.add(sgRing);
+  const sgEye = new THREE.Mesh(new THREE.SphereGeometry(0.009, 12, 10), M.glass);
+  sgEye.position.set(RIGHT + 0.058, CY + 0.06, lz + 0.033); refr.add(sgEye);
+  // service port + Schrader cap on the liquid line
+  const port = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.02, 8), M.brass);
+  port.position.set(RIGHT + 0.075, ly + 0.02, lz); port.rotation.z = Math.PI / 2; add(port, true, false); refr.add(port);
+  const portCap = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.01, 8), M.copperDark);
+  portCap.position.set(RIGHT + 0.088, ly + 0.02, lz); portCap.rotation.z = Math.PI / 2; refr.add(portCap);
+}
+
+// suction line: thick FOAM-insulated lagging over a copper core, sweeping up the right flank
+{
+  const core = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(HX + 0.02, CY - 0.12, COIL_Z - 0.02),
+    new THREE.Vector3(RIGHT - 0.02, CY - 0.06, -0.12),
+    new THREE.Vector3(RIGHT + 0.04, CY, -0.10),
+    new THREE.Vector3(RIGHT + 0.05, CY + 0.14, -0.06),
+    new THREE.Vector3(RIGHT + 0.05, CY + 0.22, 0.02),
+  ]);
+  // copper core visible at both ends, foam sleeve over the middle
+  add(new THREE.Mesh(new THREE.TubeGeometry(core, 60, 0.019, 14, false), M.copper), true, false);
+  const foamSleeve = new THREE.Mesh(new THREE.TubeGeometry(core, 60, 0.032, 16, false), M.foam);
+  foamSleeve.castShadow = true; refr.add(foamSleeve);
+  // insulation tape wraps (dark rings)
+  for (let i = 0; i < 5; i++) {
+    const t = 0.15 + i * 0.16; const pt = core.getPointAt(t); const tan = core.getTangentAt(t);
+    const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.003, 6, 18), M.rubber);
+    wrap.position.copy(pt); wrap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan); refr.add(wrap);
+  }
+  // service valve + Schrader at the top of the suction riser
+  const sv = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.045, 14), M.copper);
+  sv.position.set(RIGHT + 0.05, CY + 0.245, 0.02); add(sv, true, false); refr.add(sv);
+  const svPort = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.018, 8), M.brass);
+  svPort.position.set(RIGHT + 0.075, CY + 0.245, 0.02); svPort.rotation.z = Math.PI / 2; add(svPort, true, false); refr.add(svPort);
+  const svCap = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.012, 8), M.copperDark);
+  svCap.position.set(RIGHT + 0.09, CY + 0.245, 0.02); svCap.rotation.z = Math.PI / 2; refr.add(svCap);
+}
+
+// ================= ELECTRICAL: junction/controls box + conduit + disconnect on the right-front corner ===
+const elec = new THREE.Group(); scene.add(elec);
+{
+  const bx = RIGHT - 0.02, by = CY + 0.02, bz = FRONT - 0.14;   // box on the right end of the front face
+  const box = new THREE.Group(); box.position.set(bx + 0.055, by, bz); elec.add(box);
+  const boxBody = new THREE.Mesh(new RoundedBoxGeometry(0.11, 0.16, 0.10, 2, 0.01), M.plastic);
+  boxBody.castShadow = true; boxBody.receiveShadow = true; box.add(boxBody);
+  // hinged lid with 4 corner screws + a warning label
+  const lid = new THREE.Mesh(new RoundedBoxGeometry(0.108, 0.155, 0.016, 2, 0.008), M.plasticGrey);
+  lid.position.set(0.058, 0, 0); box.add(lid);
+  const lidBolts = InstancedBatch(boltSmGeo, M.bolt);
+  for (const sy of [-0.06, 0.06]) for (const sz of [-0.035, 0.035]) lidBolts.add([0.067, sy, sz], [0, 0, Math.PI / 2]);
+  lidBolts.build(box);
+  const vlabel = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.06), M.labelV);
+  vlabel.rotation.y = Math.PI / 2; vlabel.position.set(0.067, 0.02, 0); box.add(vlabel);
+  // disconnect switch handle on the lid
+  const discBase = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.03, 0.03), M.plasticGrey);
+  discBase.position.set(0.068, -0.055, 0); box.add(discBase);
+  const discLever = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.012, 0.012), M.bladeTip);
+  discLever.position.set(0.085, -0.055, 0); box.add(discLever);
+  // cable glands on the bottom of the box
+  for (const sz of [-0.03, 0, 0.03]) {
+    const gland = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.011, 0.02, 8), M.plasticGrey);
+    gland.position.set(0.0, -0.088, sz); box.add(gland);
+    const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.008, 6), M.bolt);
+    nut.position.set(0.0, -0.078, sz); box.add(nut);
+  }
+  // RIGID conduit: clean cylinder + elbow running down toward the coil header
+  const rigid1 = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.14, 12), M.plasticGrey);
+  rigid1.position.set(bx + 0.055, by - 0.16, bz - 0.03); add(rigid1, true, false); elec.add(rigid1);
+  const rElbow = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.009, 8, 16, Math.PI / 2), M.plasticGrey);
+  rElbow.rotation.x = Math.PI / 2; rElbow.rotation.z = -Math.PI / 2; rElbow.position.set(bx + 0.055, by - 0.23, bz - 0.03); add(rElbow, true, false); elec.add(rElbow);
+  // FLEXIBLE conduit to the motors: a ridged sweep (stacked torus rings on a curve reads as flex)
+  const flexPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(bx + 0.03, by + 0.04, bz - 0.05),
+    new THREE.Vector3(0.30, CY + 0.10, FRONT - 0.10),
+    new THREE.Vector3(0.0, CY + 0.16, FRONT - 0.14),
+    new THREE.Vector3(-0.30, CY + 0.10, FRONT - 0.10),
+  ]);
+  add(new THREE.Mesh(new THREE.TubeGeometry(flexPath, 80, 0.011, 10, false), M.rubber), true, false);
+  const flexN = 46;
+  const flexRib = new THREE.InstancedMesh(new THREE.TorusGeometry(0.013, 0.0035, 6, 14), M.plastic, flexN);
+  flexRib.castShadow = true;
+  for (let i = 0; i < flexN; i++) {
+    const t = i / (flexN - 1); const p = flexPath.getPointAt(t); const tan = flexPath.getTangentAt(t);
+    dummy.position.copy(p); dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan); dummy.updateMatrix();
+    flexRib.setMatrixAt(i, dummy.matrix);
+  }
+  flexRib.instanceMatrix.needsUpdate = true; elec.add(flexRib);
+  // small terminal strip visible on the box side (knockout)
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.012, 0.016), M.plasticGrey);
+  strip.position.set(bx + 0.02, by + 0.09, bz + 0.02); elec.add(strip);
+  const termBolts = InstancedBatch(new THREE.CylinderGeometry(0.0025, 0.0025, 0.014, 6), M.brass);
+  for (let i = 0; i < 6; i++) termBolts.add([bx + 0.0 + i * 0.008, by + 0.097, bz + 0.02], [0, 0, 0]);
+  termBolts.build(elec);
+}
+
+// ================= DRIP / DRAIN TRAY + threaded drain fitting + P-trap stub =================
+const tray = new THREE.Mesh(new RoundedBoxGeometry(1.30, 0.10, 0.62, 2, 0.02), M.tray);
+tray.position.set(0.0, 0.20, 0.01); tray.castShadow = true; tray.receiveShadow = true; scene.add(tray);
+// tray inner recess (reads as a pan, not a solid block)
+const trayInner = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.06, 0.56), M.darkrec);
+trayInner.position.set(0, 0.235, 0.01); scene.add(trayInner);
+// threaded drain fitting under the tray + P-trap stub
+{
+  const dx = -0.42, dz = 0.02;
+  const fitting = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.05, 14), M.bolt);
+  fitting.position.set(dx, 0.15, dz); add(fitting, true, false); scene.add(fitting);
+  // thread rings
+  const thr = new THREE.InstancedMesh(new THREE.TorusGeometry(0.024, 0.0022, 6, 16), M.bolt, 5);
+  for (let i = 0; i < 5; i++) { dummy.position.set(dx, 0.135 + i * 0.008, dz); dummy.rotation.set(Math.PI / 2, 0, 0); dummy.updateMatrix(); thr.setMatrixAt(i, dummy.matrix); }
+  thr.instanceMatrix.needsUpdate = true; scene.add(thr);
+  // P-trap: down leg + U + up stub (grey PVC)
+  const down = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.10, 14), M.plasticGrey);
+  down.position.set(dx, 0.075, dz); add(down, true, false); scene.add(down);
+  const uTrap = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.02, 12, 24, Math.PI), M.plasticGrey);
+  uTrap.rotation.x = Math.PI / 2; uTrap.position.set(dx + 0.03, 0.03, dz); add(uTrap, true, false); scene.add(uTrap);
+  const upStub = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.06, 14), M.plasticGrey);
+  upStub.position.set(dx + 0.06, 0.06, dz); add(upStub, true, false); scene.add(upStub);
+}
+
+// ================= HANGER BRACKETS + THREADED RODS (ceiling-hung) =================
+const ceilY = 1.00;
+const ceiling = add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.04, 0.7),
+  new THREE.MeshStandardMaterial({ color: 0x141a20, roughness: 0.95 })), false, true);
+ceiling.position.set(0, ceilY + 0.02, -0.05);
+for (const bx of [-0.42, 0.42]) {
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 0.36), M.bracket);
+  foot.position.set(bx, CY + CH / 2 + 0.005, -0.10); add(foot); unit.add(foot);
+  // foot bolts
+  const fBolts = InstancedBatch(boltSmGeo, M.bolt);
+  for (const sz of [-0.14, 0.12]) fBolts.add([bx, CY + CH / 2 + 0.022, -0.10 + sz], [0, 0, 0]);
+  fBolts.build(unit);
+  for (const rz of [-0.16, 0.14]) {
+    const rod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, ceilY - (CY + CH / 2), 10), M.rod));
+    rod.position.set(bx, (CY + CH / 2 + ceilY) / 2, -0.10 + rz);
+    // hex nut + washer at the top
+    const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.012, 6), M.bolt);
+    nut.position.set(bx, CY + CH / 2 + 0.02, -0.10 + rz); scene.add(nut);
+  }
+}
+
+// ================= NAMEPLATE + STATUS LED on the front, between the fans =================
+const plate = add(new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.10, 0.006), M.plate));
+plate.position.set(0.0, 0.56, FRONT + 0.004);
+// small logo plate above
+const logo = add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.004), M.brass));
+logo.position.set(0.0, 0.64, FRONT + 0.004);
+const led = add(new THREE.Mesh(new THREE.SphereGeometry(0.011, 12, 10), M.led));
+led.position.set(0.10, 0.62, FRONT + 0.01);
+const ledLight = new THREE.PointLight(0x18e06a, 0.5, 0.5); ledLight.position.copy(led.position); scene.add(ledLight);
+
+// ================= COIL PROTECTIVE GUARD GRID over the intake fin face =================
+{
+  const gz = COIL_Z - COIL_D / 2 - 0.008;   // just in front of the intake face (-Z)
+  const gw = COIL_W + 0.02, gh = COIL_H + 0.02;
+  const grid = new THREE.Group(); scene.add(grid);
+  // perimeter frame
+  const frameGeo = [
+    [gw, 0.012, [0, CY + gh / 2, gz]], [gw, 0.012, [0, CY - gh / 2, gz]],
+  ];
+  for (const [w, h, p] of frameGeo) { const f = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.01), M.galv); f.position.set(...p); add(f, true, false); grid.add(f); }
+  for (const sx of [-gw / 2, gw / 2]) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.012, gh, 0.01), M.galv); f.position.set(sx, CY, gz); add(f, true, false); grid.add(f); }
+  // vertical + horizontal wire rods (InstancedMesh)
+  const vN = 19, hN = 7;
+  const vRod = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.0022, 0.0022, gh, 6), M.grille, vN);
+  vRod.castShadow = true;
+  for (let i = 0; i < vN; i++) { const x = -gw / 2 + (i + 0.5) * (gw / vN); dummy.position.set(x, CY, gz); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); vRod.setMatrixAt(i, dummy.matrix); }
+  vRod.instanceMatrix.needsUpdate = true; grid.add(vRod);
+  const hRod = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.0022, 0.0022, gw, 6), M.grille, hN);
+  hRod.castShadow = true;
+  for (let i = 0; i < hN; i++) { const y = CY - gh / 2 + (i + 0.5) * (gh / hN); dummy.position.set(0, y, gz + 0.003); dummy.rotation.set(0, 0, Math.PI / 2); dummy.updateMatrix(); hRod.setMatrixAt(i, dummy.matrix); }
+  hRod.instanceMatrix.needsUpdate = true; grid.add(hRod);
+}
+
+// ================= TOP-DECK LIFTING LUGS (eye plates) at the four deck corners =================
+for (const sx of [LEFT + 0.06, RIGHT - 0.06]) for (const sz of [BACK + 0.08, FRONT - 0.08]) {
+  const lug = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.05, 0.03), M.bracket);
+  lug.position.set(sx, TOP + 0.025, sz); add(lug); unit.add(lug);
+  const eye = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.005, 8, 14), M.rod);
+  eye.rotation.y = Math.PI / 2; eye.position.set(sx, TOP + 0.045, sz); add(eye); unit.add(eye);
+}
+
+// ================= FRONT-LEFT: secondary spec label + defrost thermostat sensor knob =================
+{
+  const specLabel = add(new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.005), M.plate));
+  specLabel.position.set(-0.50, 0.40, FRONT + 0.004);
+  // small round defrost-termination sensor with a capillary into the coil
+  const sensor = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.016, 14), M.plasticGrey);
+  sensor.rotation.x = Math.PI / 2; sensor.position.set(-0.50, 0.55, FRONT + 0.006); add(sensor); unit.add(sensor);
+  const sensorCap = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.50, 0.55, FRONT), new THREE.Vector3(-0.53, 0.5, 0.0), new THREE.Vector3(-0.54, 0.5, BACK + 0.02),
+  ]), 20, 0.0022, 6, false), M.copperDark);
+  add(sensorCap, true, false); unit.add(sensorCap);
+}
+
+// ================= AIRFLOW DIRECTION arrow decal on the front (between fan and edge) =================
+{
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1a2b6b'; ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = '#eef3ff'; ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center'; ctx.fillText('AIR', 90, 74);
+  ctx.beginPath(); ctx.moveTo(150, 64); ctx.lineTo(210, 64); ctx.lineTo(210, 44); ctx.lineTo(244, 74); ctx.lineTo(210, 104); ctx.lineTo(210, 84); ctx.lineTo(150, 84); ctx.closePath(); ctx.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const decal = add(new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.06), new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 })));
+  decal.position.set(-0.44, 0.685, FRONT + 0.003);
+}
+
+// ================= ground shadow catcher =================
+const ground = add(new THREE.Mesh(new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x0b0f15, roughness: 1 })), false, true);
+ground.rotation.x = -Math.PI / 2;
+
+// ---- legend ----
+const legendEl = document.getElementById('legend');
+const legend = [['#e7ebee','painted casing'],['#b9c1c8','galvanized steel'],['#c7cdd2','aluminium coil fins'],
+  ['#c27a3e','copper tubes / lines'],['#c9a24a','brass valves / ports'],['#1c2024','foam-insul suction'],
+  ['#2b3138','junction box + conduit'],['#ff7a1a','fan tips / hazard'],['#18e06a','status LED']];
+for (const [c, n] of legend) { const r = document.createElement('div'); r.className = 'row'; r.innerHTML = `<i style="background:${c}"></i>${n}`; legendEl.appendChild(r); }
+
+// --- deterministic capture hook (SKILL Hard Rule 9) ---
+window.__cam = () => ({ pos: camera.position.toArray(), target: controls.target.toArray() });
+const camArg = new URLSearchParams(location.search).get('cam');
+if (camArg) { const v = camArg.split(',').map(Number); if (v.length === 6) { camera.position.set(v[0],v[1],v[2]); controls.target.set(v[3],v[4],v[5]); } }
+const spin = new URLSearchParams(location.search).get('spin') !== '0';
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+let baked = false;
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (spin) for (const s of spinners) s.rotation.z += dt * 5.0;
+  controls.update();
+  renderer.render(scene, camera);
+  if (!baked) { renderer.shadowMap.needsUpdate = false; baked = true; }
+});
+
+document.documentElement.setAttribute('data-app-ready', 'true');
+</script>
+</body>
+</html>
