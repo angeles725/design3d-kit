@@ -23,14 +23,24 @@ source of truth — never improvise phases, gates, or track rules from memory.
 
 ## Hard Rules
 
+0. **Doctrine first (`references/PIPELINE.md` §1).** The guiding principle is *the shortest path
+   from intent to a 3D artifact you LOOKED AT and that is not broken*: FAST by default, a cheap
+   NON-NEGOTIABLE floor (the four guard-rails GR1–GR4 = `library/harness/turn-guard.mjs`), and
+   RIGOR only ON-SIGNAL. Route the run into the FAST or RIGOROUS lane (PIPELINE.md §2) before
+   applying the rules below — several are lane-scoped.
+
 1. Before any work, read `references/PIPELINE.md`, the active `references/TRACK-*.md`, and
    `LEARNINGS.md` **§Active ledger ONLY**. Active entries at `confirmed` or above are BINDING for
    the run. **NEVER read §Staged as authority** — it is the user's review queue, not a rulebook.
-2. NO geometry before an approved DesignSpec — including animation-ready hierarchy with named
-   pivots and 3–5 critical features, hard max 5 (`references/DESIGNSPEC.md`).
-3. Pass-locked pipeline: advance only when the pass gate PASSES (`references/GATES.md`). A
-   critical feature below its threshold FAILS the pass even with a high global score. Max 2
-   correction retries per pass, then STOP and present evidence.
+2. **Lane-scoped (PIPELINE.md §2).** In the **RIGOROUS lane**, NO geometry before an approved
+   DesignSpec — including animation-ready hierarchy with named pivots and 3–5 critical features,
+   hard max 5 (`references/DESIGNSPEC.md`). In the **FAST lane (default)**, a one-line PINNED
+   intent (GR4) replaces the full DesignSpec: pin it, build, then run the four-guard-rail floor.
+3. **RIGOROUS lane only.** Pass-locked pipeline: advance only when the pass gate PASSES
+   (`references/GATES.md`). A critical feature below its threshold FAILS the pass even with a high
+   global score. Max 2 correction retries per pass, then STOP and present evidence. The **FAST
+   lane's** check is the four guard-rails floor (`library/harness/turn-guard.mjs`, PIPELINE.md §1),
+   run once before delivery — not the pass ladder.
 4. Multi-asset scenes: build ONE asset at a time, gate each before the next.
 5. WSL2/no-GPU environments: NEVER screenshot WebGL via chrome-devtools MCP. Capture only via
    the track's harness (`capture.mjs`) over a local http server — never `file://`.
