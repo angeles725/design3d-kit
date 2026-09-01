@@ -135,3 +135,64 @@ test('threat — path resolve: relative and absolute paths produce structurally 
   assert.ok('gr3' in r.rails, 'gr3 must be present');
   assert.ok('gr4' in r.rails, 'gr4 must be present');
 });
+
+// ---- W-1 GR4 structural check ---------------------------------------------------
+
+// (a) grid-aligned built boxes + parametric intent → FAIL with reason 'pbr-on-voxel'
+test('W-1 GR4 structural: grid-aligned built boxes + parametric intent → gr4.ok=false reason=pbr-on-voxel', async () => {
+  const scene = {
+    intent: INTENT,
+    voxelSize: 1,
+    source: { objects: [
+      { id: 'wall-A', type: 'block', center: [0.5, 0.5, 0.5], size: [1, 1, 1] },
+      { id: 'wall-B', type: 'block', center: [1.5, 0.5, 0.5], size: [1, 1, 1] },
+    ]},
+    built: { objects: [
+      { id: 'wall-A', type: 'block', center: [0.5, 0.5, 0.5], size: [1, 1, 1] },
+      { id: 'wall-B', type: 'block', center: [1.5, 0.5, 0.5], size: [1, 1, 1] },
+    ]},
+    objects: [],
+  };
+  const r = await runGuard(scene, INTENT);
+  assert.equal(r.rails.gr4.ok, false,
+    'GR4 must fail when built pieces are voxel-grid boxes and intent forbids PBR-on-voxel');
+  assert.equal(r.rails.gr4.reason, 'pbr-on-voxel',
+    `expected reason 'pbr-on-voxel', got '${r.rails.gr4.reason}'`);
+});
+
+// (b) genuine parametric scene (non-grid sizes/positions) + same intent → PASS
+test('W-1 GR4 structural: non-grid built pieces + parametric intent → gr4.ok=true', async () => {
+  const scene = {
+    intent: INTENT,
+    voxelSize: 1,
+    source: { objects: [
+      { id: 'arch-A', type: 'block', center: [0.5, 0.5, 0.5], size: [1, 1, 1] },
+    ]},
+    built: { objects: [
+      { id: 'arch-A', type: 'block', center: [0.31, 0.73, 0.19], size: [0.85, 1.23, 0.91] },
+    ]},
+    objects: [],
+  };
+  const r = await runGuard(scene, INTENT);
+  assert.equal(r.rails.gr4.ok, true,
+    'GR4 must pass for genuine parametric built pieces (non-grid sizes/positions)');
+});
+
+// (c) grid-aligned boxes but intent does NOT forbid PBR-on-voxel → no false positive
+test('W-1 GR4 structural: grid-aligned boxes + neutral intent → gr4.ok=true (no false positive)', async () => {
+  const neutralIntent = 'blocky architecture style';
+  const scene = {
+    intent: neutralIntent,
+    voxelSize: 1,
+    source: { objects: [
+      { id: 'wall-A', type: 'block', center: [0.5, 0.5, 0.5], size: [1, 1, 1] },
+    ]},
+    built: { objects: [
+      { id: 'wall-A', type: 'block', center: [0.5, 0.5, 0.5], size: [1, 1, 1] },
+    ]},
+    objects: [],
+  };
+  const r = await runGuard(scene, neutralIntent);
+  assert.equal(r.rails.gr4.ok, true,
+    'GR4 must not flag grid-aligned boxes when intent does not forbid PBR-on-voxel');
+});

@@ -1,0 +1,20 @@
+{
+  "intent": "parametric geometry, not PBR-on-voxel",
+  "voxelSize": 1,
+  "source": {
+    "objects": [
+      { "id": "wall-A", "type": "block", "center": [0.5, 0.5, 0.5], "size": [1, 1, 1] },
+      { "id": "wall-B", "type": "block", "center": [1.5, 0.5, 0.5], "size": [1, 1, 1] }
+    ]
+  },
+  "built": {
+    "objects": [
+      { "id": "wall-A", "type": "block", "center": [0.5, 0.5, 0.5], "size": [1, 1, 1] },
+      { "id": "wall-B", "type": "block", "center": [1.5, 0.5, 0.5], "size": [1, 1, 1] }
+    ]
+  },
+  "objects": [
+    { "id": "wall-A", "type": "block", "center": [0.5, 0.5, 0.5], "size": [1, 1, 1] },
+    { "id": "wall-B", "type": "block", "center": [1.5, 0.5, 0.5], "size": [1, 1, 1] }
+  ]
+}
