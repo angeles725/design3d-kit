@@ -63,14 +63,45 @@ function runGR3(scene, h) {
   return { ok, extra: result.extra, missing: result.missing, drifts: result.drifts };
 }
 
-// ---- GR4: spec lock (intent pinned + unchanged) ---------------------------------
+// ---- GR4: spec lock (intent pinned + unchanged) + structural PBR-on-voxel check ----
 
-function runGR4(intent, pinnedIntent) {
+/** Returns true when the intent string explicitly forbids PBR-on-voxel output. */
+function isPBROnVoxelForbidden(intent) {
+  const s = String(intent).toLowerCase();
+  return s.includes('not pbr-on-voxel') ||
+    (s.includes('param') && (s.includes('geometr') || s.includes('geom')));
+}
+
+/**
+ * Returns true when a built piece is a voxel-grid box: its center snaps to a voxel
+ * cell center within eps AND each size component is an integer multiple of h within eps.
+ */
+function isGridAlignedBox(obj, h) {
+  if (!obj.center || !obj.size) return false;
+  const eps = 1e-3;
+  for (const c of obj.center) {
+    if (Math.abs(c - (Math.floor(c / h) + 0.5) * h) > eps) return false;
+  }
+  for (const s of obj.size) {
+    if (Math.abs(s / h - Math.round(s / h)) > eps) return false;
+  }
+  return true;
+}
+
+function runGR4(intent, pinnedIntent, scene, h) {
   if (!intent || String(intent).trim() === '') {
     return { ok: false, reason: 'missing-or-empty' };
   }
   if (pinnedIntent != null && pinnedIntent !== intent) {
     return { ok: false, reason: 'intent-changed', expected: pinnedIntent, actual: intent };
+  }
+  // Structural check: if intent forbids PBR-on-voxel, reject all-grid-aligned built output.
+  if (scene && isPBROnVoxelForbidden(intent)) {
+    const builtObjs = scene.built?.objects ?? scene.objects ?? [];
+    const total = builtObjs.length;
+    if (total > 0 && builtObjs.every(o => isGridAlignedBox(o, h))) {
+      return { ok: false, reason: 'pbr-on-voxel' };
+    }
   }
   return { ok: true };
 }
@@ -112,7 +143,7 @@ export async function runGuard(scene, intent, opts = {}) {
   const gr3 = runGR3(scene, h);
   // pinnedIntent: from scene descriptor (specced at turn start)
   const pinnedIntent = scene.intent ?? scene.__intent ?? null;
-  const gr4 = runGR4(intent, pinnedIntent);
+  const gr4 = runGR4(intent, pinnedIntent, scene, h);
 
   const elapsedMs = Date.now() - startTime;
   const budgetOk = elapsedMs < budgetMs;
