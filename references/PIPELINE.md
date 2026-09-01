@@ -98,9 +98,16 @@ Loading the whole kit up front is ~5 minutes you do not spend here (measured bas
 3. **Build the one artifact.** Voxel massing as the dimensional source of truth, then — if asked —
    the realista/PBR pass by the conversion contract (`PROVENANCE-CONTRACT.md`: voxel is truth, the
    realista TRANSLATES its cotas, never re-invents them).
-4. **Run the floor once** — `node library/harness/turn-guard.mjs <artifact>` — GR1 look + GR2 axis +
+4. **Look and enrich (self-critique).** Build-once is NOT enough for quality. Render the artifact
+   with the cheap real render (`cheapRender`, ~4 s webgl) and LOOK at it — from more than one angle
+   (a sparse face hides from a single view: the back coil wall, an empty panel). If it reads too
+   plain/sparse, ADD DETAIL (fasteners, panel seams, service panels, secondary components, wiring,
+   labels) and re-render — **1–2 rounds, no more** (keep it fast; ~3 min buys the whole quality
+   jump). The cheap render is there to iterate on RICHNESS, not only to certify "not broken". Detail
+   is SUB-PART inside the massing AABBs, so GR3 drift stays ~0 (the cotas never move).
+5. **Run the floor once** — `node library/harness/turn-guard.mjs <artifact>` — GR1 look + GR2 axis +
    GR3 anti-invention + GR4 intent, plus the wall-time budget assertion. All four must pass.
-5. **Deliver** the artifact, the GR1 look image, and the four verdicts. If GR1/GR2/GR3 fail and the
+6. **Deliver** the artifact, the GR1 look image, and the four verdicts. If GR1/GR2/GR3 fail and the
    fix is obvious, fix and re-run the floor (still fast). If a failure is structural/non-obvious →
    escalate to the RIGOROUS lane with the failing check as the entry evidence.
 
