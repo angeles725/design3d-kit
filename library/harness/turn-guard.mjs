@@ -135,7 +135,7 @@ function sceneDepth(scene, h) {
  * @returns {Promise<{ok:boolean, rails:{gr1,gr2,gr3,gr4}, elapsedMs:number, lookPng:Buffer, renderMode:'soft-raster'|'webgl', realImagePath?:string}>}
  */
 export async function runGuard(scene, intent, opts = {}) {
-  const { budgetMs = 30000, renderReal = false, artifactPath = null } = opts;
+  const { budgetMs = 30000, renderReal = false, artifactPath = null, loadPuppeteer } = opts;
   const h = scene.voxelSize ?? 1;
   const D = sceneDepth(scene, h);
   const startTime = Date.now();
@@ -159,7 +159,7 @@ export async function runGuard(scene, intent, opts = {}) {
   let realImagePath;
   if (renderReal && artifactPath) {
     const { cheapRender } = await import('./cheap-render.mjs');
-    const rr = await cheapRender(artifactPath, { timeoutMs: 25000 });
+    const rr = await cheapRender(artifactPath, { timeoutMs: 25000, loadPuppeteer });
     renderMode = rr.renderMode;
     if (rr.imagePath) realImagePath = rr.imagePath;
   }

@@ -75,7 +75,7 @@ function serveHtmlFile(htmlPath) {
  * @returns {Promise<{ imagePath: string|null, renderMode: 'webgl'|'soft-raster', elapsedMs: number }>}
  */
 export async function cheapRender(htmlPath, opts = {}) {
-  const { timeoutMs = 25000, res = 512 } = opts;
+  const { timeoutMs = 25000, res = 512, loadPuppeteer = tryLoadPuppeteer } = opts;
   const t0 = Date.now();
 
   /** Always-safe fallback — never throws. */
@@ -88,8 +88,10 @@ export async function cheapRender(htmlPath, opts = {}) {
   // Guard: file must exist before we even try
   if (!existsSync(htmlPath)) return fallback();
 
-  // Guard: puppeteer must be loadable
-  const puppeteer = await tryLoadPuppeteer();
+  // Guard: puppeteer must be loadable. loadPuppeteer is injectable (tests force
+  // the unavailable path deterministically regardless of the ambient env); a
+  // rejecting loader is treated as "unavailable" so we never throw.
+  const puppeteer = await loadPuppeteer().catch(() => null);
   if (!puppeteer) return fallback();
 
   let server = null;
@@ -118,12 +120,15 @@ export async function cheapRender(htmlPath, opts = {}) {
       const page = await browser.newPage();
       await page.setViewport({ width: res, height: res, deviceScaleFactor: 1 });
 
-      // Navigation: leave at least 2 s for the timeout guard itself
+      // Navigation: leave at least 2 s for the timeout guard itself.
+      // 'load' (not 'networkidle0'): a CDN-loaded Three.js page (jsdelivr three
+      // + addons) rarely reaches 0 idle connections, so networkidle0 waits the
+      // whole budget and times out; 'load' + a settle renders in ~3 s (measured).
       const navTimeout = Math.max(1000, timeoutMs - 3000);
-      await page.goto(server.url, { waitUntil: 'networkidle0', timeout: navTimeout });
+      await page.goto(server.url, { waitUntil: 'load', timeout: navTimeout });
 
-      // Brief settle so Three.js gets at least one render frame
-      await new Promise(r => setTimeout(r, 1500));
+      // Settle so Three.js gets its first render frame(s)
+      await new Promise(r => setTimeout(r, 2000));
 
       const outPath = path.join(tmpdir(), `gr1-cheaprender-${randomUUID()}.png`);
       await page.screenshot({ path: outPath });
